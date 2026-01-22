@@ -1,0 +1,49 @@
+graph TD
+    %% User Layer
+    User((User)) -->|HTTPS Request| CDN[CDN & Load Balancer]
+
+    %% Frontend Layer
+    subgraph Frontend_Layer [Frontend Client]
+        Browser[Web Browser / Mobile App]
+        StaticAssets[Static Assets<br/>HTML/CSS/JS]
+    end
+    
+    CDN --> Browser
+    Browser -->|API Calls| API_Gateway
+
+    %% Backend Layer
+    subgraph Backend_Layer [Backend Infrastructure]
+        API_Gateway[API Gateway / Web Server]
+        Auth_Service[Auth Service]
+        App_Server[Application Server<br/>Business Logic]
+        Worker[Background Worker]
+        Msg_Queue[Message Queue]
+    end
+
+    API_Gateway --> App_Server
+    App_Server --> Auth_Service
+    App_Server -->|Async Tasks| Msg_Queue
+    Msg_Queue --> Worker
+
+    %% Data Layer
+    subgraph Data_Layer [Data & Storage]
+        Cache[(Redis / Cache)]
+        Primary_DB[(Primary Database<br/>SQL/NoSQL)]
+        Obj_Store[Object Storage<br/>Images/Files]
+    end
+
+    App_Server -->|Read/Write| Cache
+    App_Server -->|Persist Data| Primary_DB
+    App_Server -->|Store Files| Obj_Store
+    Worker --> Primary_DB
+
+    %% External Services
+    subgraph External_Services [3rd Party Dependencies]
+        Payment[Payment Gateway<br/>e.g., Stripe]
+        Email[Email Service<br/>e.g., SendGrid]
+        Analytics[Analytics Tools]
+    end
+
+    App_Server --> Payment
+    Worker --> Email
+    Browser --> Analytics

@@ -1,0 +1,14 @@
+[package]
+name = "graphs-tui"
+version = "0.1.0"
+edition = "2021"
+description = "Terminal renderer for Mermaid and D2 diagrams - flowcharts, state diagrams, pie charts in Unicode/ASCII"
+license = "AGPL-3.0-or-later"
+repository = "https://github.com/decisiongraph/graphs-tui"
+homepage = "https://github.com/decisiongraph/graphs-tui"
+keywords = ["mermaid", "d2", "tui", "ascii", "diagram", "flowchart", "terminal"]
+categories = ["command-line-utilities", "visualization"]
+
+[lib]
+name = "graphs_tui"
+path = "src/lib.rs"
