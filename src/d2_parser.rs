@@ -211,6 +211,7 @@ fn parse_shape_property(line: &str) -> Option<(NodeId, NodeShape)> {
         "package" | "step" => NodeShape::Rectangle,
         "cloud" => NodeShape::Rounded,
         "person" => NodeShape::Circle, // Approximate with circle
+        "sql_table" | "class" => NodeShape::Table,
         _ => NodeShape::Rectangle,
     };
 
@@ -287,6 +288,19 @@ db.shape: cylinder
         assert!(matches!(
             graph.nodes.get("db").unwrap().shape,
             NodeShape::Cylinder
+        ));
+    }
+
+    #[test]
+    fn test_parse_d2_sql_table() {
+        let input = r#"
+users: Users Table
+users.shape: sql_table
+"#;
+        let graph = parse_d2(input).unwrap();
+        assert!(matches!(
+            graph.nodes.get("users").unwrap().shape,
+            NodeShape::Table
         ));
     }
 

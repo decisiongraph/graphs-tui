@@ -201,6 +201,7 @@ fn draw_node(grid: &mut Grid, node: &Node, chars: &CharSet) {
         NodeShape::ParallelogramAlt => draw_parallelogram(grid, node, chars, true),
         NodeShape::Trapezoid => draw_trapezoid(grid, node, chars, false),
         NodeShape::TrapezoidAlt => draw_trapezoid(grid, node, chars, true),
+        NodeShape::Table => draw_table(grid, node, chars),
     }
 }
 
@@ -544,6 +545,34 @@ fn draw_trapezoid(grid: &mut Grid, node: &Node, chars: &CharSet, reverse: bool) 
         let right_char = if reverse { '/' } else { chars.v };
         grid.set(x, y + i, left_char);
         grid.set(x + width - 1, y + i, right_char);
+    }
+
+    draw_label(grid, node);
+}
+
+/// Draw a table node (D2 sql_table) - uses double borders
+fn draw_table(grid: &mut Grid, node: &Node, chars: &CharSet) {
+    let x = node.x;
+    let y = node.y;
+    let width = node.width;
+    let height = node.height;
+
+    // Double-line corners (like subgraph)
+    grid.set(x, y, chars.dtl);
+    grid.set(x + width - 1, y, chars.dtr);
+    grid.set(x, y + height - 1, chars.dbl);
+    grid.set(x + width - 1, y + height - 1, chars.dbr);
+
+    // Double horizontal lines
+    for i in 1..width - 1 {
+        grid.set(x + i, y, chars.dh);
+        grid.set(x + i, y + height - 1, chars.dh);
+    }
+
+    // Double vertical lines
+    for i in 1..height - 1 {
+        grid.set(x, y + i, chars.dv);
+        grid.set(x + width - 1, y + i, chars.dv);
     }
 
     draw_label(grid, node);

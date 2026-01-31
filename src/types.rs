@@ -62,6 +62,8 @@ pub enum NodeShape {
     Trapezoid,
     /// Reverse Trapezoid [\Label/]
     TrapezoidAlt,
+    /// Table (D2 sql_table)
+    Table,
 }
 
 /// Style of an edge/link

@@ -587,6 +587,28 @@ fn test_pie_chart_show_data() {
 }
 
 // ============================================
+// D2 sql_table Shape Tests
+// ============================================
+
+/// Test D2 sql_table shape renders with double borders
+#[test]
+fn test_d2_sql_table_shape() {
+    let input = r#"
+users: Users
+users.shape: sql_table
+orders: Orders
+orders.shape: sql_table
+users -> orders
+"#;
+    let result = render_d2_to_tui(input, RenderOptions::default()).unwrap();
+    assert!(result.contains("Users"));
+    assert!(result.contains("Orders"));
+    // Should use double-line borders (═ and ║)
+    assert!(result.contains('═') || result.contains('╔'));
+    println!("D2 sql_table output:\n{}", result);
+}
+
+// ============================================
 // Max Width Constraint Tests
 // ============================================
 
