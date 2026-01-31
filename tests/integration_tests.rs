@@ -585,3 +585,32 @@ fn test_pie_chart_show_data() {
     assert!(result.contains("45"));
     println!("Pie chart showData:\n{}", result);
 }
+
+// ============================================
+// Max Width Constraint Tests
+// ============================================
+
+/// Test max_width truncates long lines
+#[test]
+fn test_max_width_constraint() {
+    let input = "flowchart LR\nA[Very Long Label Here] --> B[Another Long Label]";
+    let result = render_mermaid_to_tui(
+        input,
+        RenderOptions {
+            ascii: false,
+            max_width: Some(30),
+        },
+    )
+    .unwrap();
+    // All lines should respect max_width
+    for line in result.lines() {
+        assert!(
+            line.chars().count() <= 30,
+            "Line too long: {} chars",
+            line.chars().count()
+        );
+    }
+    // Truncated content should have ellipsis
+    assert!(result.contains('…'));
+    println!("Max width constrained output:\n{}", result);
+}

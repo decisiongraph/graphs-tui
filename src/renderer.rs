@@ -121,7 +121,28 @@ pub fn render_graph(graph: &Graph, options: &RenderOptions) -> String {
         }
     }
 
-    grid.to_string()
+    let output = grid.to_string();
+
+    // Apply max_width constraint if set
+    if let Some(max_width) = options.max_width {
+        output
+            .lines()
+            .map(|line| {
+                if line.len() > max_width {
+                    // Truncate and add ellipsis indicator
+                    let mut truncated: String =
+                        line.chars().take(max_width.saturating_sub(1)).collect();
+                    truncated.push('…');
+                    truncated
+                } else {
+                    line.to_string()
+                }
+            })
+            .collect::<Vec<_>>()
+            .join("\n")
+    } else {
+        output
+    }
 }
 
 /// Draw a subgraph box
@@ -983,5 +1004,43 @@ mod tests {
         compute_layout(&mut graph);
         let output = render_graph(&graph, &RenderOptions::default());
         assert!(output.contains("Database"));
+    }
+
+    #[test]
+    fn test_render_max_width() {
+        let mut graph = parse_mermaid("flowchart LR\nA[Start] --> B[End]").unwrap();
+        compute_layout(&mut graph);
+        let output = render_graph(
+            &graph,
+            &RenderOptions {
+                ascii: false,
+                max_width: Some(20),
+            },
+        );
+        // All lines should be truncated to max_width
+        for line in output.lines() {
+            assert!(
+                line.chars().count() <= 20,
+                "Line exceeds max_width: {} chars",
+                line.chars().count()
+            );
+        }
+        // Should contain ellipsis on truncated lines
+        assert!(output.contains('…'));
+    }
+
+    #[test]
+    fn test_render_max_width_no_truncation() {
+        let mut graph = parse_mermaid("flowchart LR\nA --> B").unwrap();
+        compute_layout(&mut graph);
+        let output = render_graph(
+            &graph,
+            &RenderOptions {
+                ascii: false,
+                max_width: Some(100), // Wide enough to not truncate
+            },
+        );
+        // Should not contain ellipsis when no truncation needed
+        assert!(!output.contains('…'));
     }
 }
