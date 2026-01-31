@@ -271,3 +271,7 @@ cargo test
 ## License
 
 AGPL-3.0-or-later
+
+## Inspiration
+
+Inspired by [tariqshams/mermaidtui](https://github.com/tariqshams/mermaidtui)
