@@ -6,7 +6,7 @@ description = "Terminal renderer for Mermaid and D2 diagrams - flowcharts, state
 license = "AGPL-3.0-or-later"
 repository = "https://github.com/decisiongraph/graphs-tui"
 homepage = "https://github.com/decisiongraph/graphs-tui"
-keywords = ["mermaid", "d2", "tui", "ascii", "diagram", "flowchart", "terminal"]
+keywords = ["mermaid", "d2", "tui", "diagram", "terminal"]
 categories = ["command-line-utilities", "visualization"]
 
 [lib]
