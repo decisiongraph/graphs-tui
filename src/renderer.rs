@@ -3,12 +3,12 @@ use crate::types::{Direction, Edge, EdgeStyle, Graph, Node, NodeShape, RenderOpt
 
 /// Unicode box-drawing characters
 struct CharSet {
-    tl: char,  // top-left corner
-    tr: char,  // top-right corner
-    bl: char,  // bottom-left corner
-    br: char,  // bottom-right corner
-    h: char,   // horizontal line
-    v: char,   // vertical line
+    tl: char,    // top-left corner
+    tr: char,    // top-right corner
+    bl: char,    // bottom-left corner
+    br: char,    // bottom-right corner
+    h: char,     // horizontal line
+    v: char,     // vertical line
     arr_r: char, // arrow right
     arr_l: char, // arrow left
     arr_d: char, // arrow down
@@ -75,7 +75,11 @@ const ASCII_CHARS: CharSet = CharSet {
 
 /// Render the graph to a string
 pub fn render_graph(graph: &Graph, options: &RenderOptions) -> String {
-    let chars = if options.ascii { &ASCII_CHARS } else { &UNICODE_CHARS };
+    let chars = if options.ascii {
+        &ASCII_CHARS
+    } else {
+        &UNICODE_CHARS
+    };
 
     // Find grid bounds
     let mut max_x = 0;
@@ -105,7 +109,15 @@ pub fn render_graph(graph: &Graph, options: &RenderOptions) -> String {
     // 3. Render edges
     for edge in &graph.edges {
         if let (Some(from), Some(to)) = (graph.nodes.get(&edge.from), graph.nodes.get(&edge.to)) {
-            draw_edge(&mut grid, from, to, edge, chars, graph.direction, options.ascii);
+            draw_edge(
+                &mut grid,
+                from,
+                to,
+                edge,
+                chars,
+                graph.direction,
+                options.ascii,
+            );
         }
     }
 
@@ -152,6 +164,9 @@ fn draw_subgraph(grid: &mut Grid, sg: &Subgraph, chars: &CharSet) {
 
 /// Draw a node with its shape
 fn draw_node(grid: &mut Grid, node: &Node, chars: &CharSet) {
+    // First, protect the entire node bounding box from edge overwriting
+    protect_node_area(grid, node);
+
     match node.shape {
         NodeShape::Rectangle => draw_rectangle(grid, node, chars),
         NodeShape::Rounded => draw_rounded(grid, node, chars),
@@ -165,6 +180,15 @@ fn draw_node(grid: &mut Grid, node: &Node, chars: &CharSet) {
         NodeShape::ParallelogramAlt => draw_parallelogram(grid, node, chars, true),
         NodeShape::Trapezoid => draw_trapezoid(grid, node, chars, false),
         NodeShape::TrapezoidAlt => draw_trapezoid(grid, node, chars, true),
+    }
+}
+
+/// Protect the entire node bounding box from being overwritten by edges
+fn protect_node_area(grid: &mut Grid, node: &Node) {
+    for y in node.y..node.y + node.height {
+        for x in node.x..node.x + node.width {
+            grid.mark_protected(x, y);
+        }
     }
 }
 
@@ -518,19 +542,34 @@ fn get_edge_chars(style: EdgeStyle, chars: &CharSet, ascii: bool) -> (char, char
     match style {
         EdgeStyle::Arrow | EdgeStyle::Line => (chars.h, chars.v),
         EdgeStyle::DottedArrow | EdgeStyle::DottedLine => {
-            if ascii { ('.', ':') } else { ('·', '·') }
-        },
+            if ascii {
+                ('.', ':')
+            } else {
+                ('·', '·')
+            }
+        }
         EdgeStyle::ThickArrow | EdgeStyle::ThickLine => (chars.dh, chars.dv),
     }
 }
 
 /// Check if edge style has an arrow
 fn style_has_arrow(style: EdgeStyle) -> bool {
-    matches!(style, EdgeStyle::Arrow | EdgeStyle::DottedArrow | EdgeStyle::ThickArrow)
+    matches!(
+        style,
+        EdgeStyle::Arrow | EdgeStyle::DottedArrow | EdgeStyle::ThickArrow
+    )
 }
 
 /// Draw an edge between two nodes
-fn draw_edge(grid: &mut Grid, from: &Node, to: &Node, edge: &Edge, chars: &CharSet, direction: Direction, ascii: bool) {
+fn draw_edge(
+    grid: &mut Grid,
+    from: &Node,
+    to: &Node,
+    edge: &Edge,
+    chars: &CharSet,
+    direction: Direction,
+    ascii: bool,
+) {
     let has_arrow = style_has_arrow(edge.style);
     let (h_char, v_char) = get_edge_chars(edge.style, chars, ascii);
 
@@ -566,13 +605,37 @@ fn draw_edge(grid: &mut Grid, from: &Node, to: &Node, edge: &Edge, chars: &CharS
     };
 
     if direction.is_horizontal() {
-        draw_horizontal_edge(grid, start_x, start_y, end_x, end_y, h_char, v_char, arrow_char, direction, edge.label.as_deref(), chars);
+        draw_horizontal_edge(
+            grid,
+            start_x,
+            start_y,
+            end_x,
+            end_y,
+            h_char,
+            v_char,
+            arrow_char,
+            direction,
+            edge.label.as_deref(),
+            chars,
+        );
     } else {
-        draw_vertical_edge(grid, start_x, start_y, end_x, end_y, h_char, v_char, arrow_char, direction, edge.label.as_deref(), chars);
+        draw_vertical_edge(
+            grid,
+            start_x,
+            start_y,
+            end_x,
+            end_y,
+            h_char,
+            v_char,
+            arrow_char,
+            direction,
+            edge.label.as_deref(),
+            chars,
+        );
     }
 }
 
-/// Draw edge for LR/RL directions
+/// Draw edge for LR/RL directions (respects protected node cells)
 fn draw_horizontal_edge(
     grid: &mut Grid,
     start_x: usize,
@@ -594,13 +657,13 @@ fn draw_horizontal_edge(
             (end_x, start_x)
         };
         for x in from_x..to_x {
-            grid.set(x, start_y, h_char);
+            grid.set_if_empty(x, start_y, h_char);
         }
         // Arrow just before the end
         if end_x > start_x {
-            grid.set(end_x - 1, end_y, arrow_char);
+            grid.set_if_empty(end_x - 1, end_y, arrow_char);
         } else {
-            grid.set(end_x + 1, end_y, arrow_char);
+            grid.set_if_empty(end_x + 1, end_y, arrow_char);
         }
 
         // Draw label in the middle of the edge
@@ -609,7 +672,7 @@ fn draw_horizontal_edge(
             if edge_len > lbl.len() + 2 {
                 let label_x = from_x + (edge_len - lbl.len()) / 2;
                 for (i, c) in lbl.chars().enumerate() {
-                    grid.set(label_x + i, start_y, c);
+                    grid.set_if_empty(label_x + i, start_y, c);
                 }
             }
         }
@@ -625,16 +688,24 @@ fn draw_horizontal_edge(
             (mid_x, start_x)
         };
         for x in from_x..to_x {
-            grid.set(x, start_y, h_char);
+            grid.set_if_empty(x, start_y, h_char);
         }
 
         // Turn 1 at (mid_x, start_y)
         let corner1 = if end_y > start_y {
-            if is_lr { chars.tr } else { chars.tl }
+            if is_lr {
+                chars.tr
+            } else {
+                chars.tl
+            }
         } else {
-            if is_lr { chars.br } else { chars.bl }
+            if is_lr {
+                chars.br
+            } else {
+                chars.bl
+            }
         };
-        grid.set(mid_x, start_y, corner1);
+        grid.set_if_empty(mid_x, start_y, corner1);
 
         // Vertical from start_y to end_y
         let (from_y, to_y) = if end_y > start_y {
@@ -643,7 +714,7 @@ fn draw_horizontal_edge(
             (end_y + 1, start_y)
         };
         for y in from_y..to_y {
-            grid.set(mid_x, y, v_char);
+            grid.set_if_empty(mid_x, y, v_char);
         }
 
         // Draw label on vertical segment
@@ -653,18 +724,26 @@ fn draw_horizontal_edge(
                 let label_y = from_y + vert_len / 2;
                 // Draw label to the right of the vertical line
                 for (i, c) in lbl.chars().enumerate() {
-                    grid.set(mid_x + 1 + i, label_y, c);
+                    grid.set_if_empty(mid_x + 1 + i, label_y, c);
                 }
             }
         }
 
         // Turn 2 at (mid_x, end_y)
         let corner2 = if end_y > start_y {
-            if is_lr { chars.bl } else { chars.br }
+            if is_lr {
+                chars.bl
+            } else {
+                chars.br
+            }
         } else {
-            if is_lr { chars.tl } else { chars.tr }
+            if is_lr {
+                chars.tl
+            } else {
+                chars.tr
+            }
         };
-        grid.set(mid_x, end_y, corner2);
+        grid.set_if_empty(mid_x, end_y, corner2);
 
         // Horizontal from mid to end
         let (from_x, to_x) = if end_x > mid_x {
@@ -673,19 +752,19 @@ fn draw_horizontal_edge(
             (end_x, mid_x)
         };
         for x in from_x..to_x {
-            grid.set(x, end_y, h_char);
+            grid.set_if_empty(x, end_y, h_char);
         }
 
         // Arrow
         if end_x > mid_x {
-            grid.set(end_x - 1, end_y, arrow_char);
+            grid.set_if_empty(end_x - 1, end_y, arrow_char);
         } else {
-            grid.set(end_x + 1, end_y, arrow_char);
+            grid.set_if_empty(end_x + 1, end_y, arrow_char);
         }
     }
 }
 
-/// Draw edge for TB/BT directions
+/// Draw edge for TB/BT directions (respects protected node cells)
 fn draw_vertical_edge(
     grid: &mut Grid,
     start_x: usize,
@@ -707,13 +786,13 @@ fn draw_vertical_edge(
             (end_y, start_y)
         };
         for y in from_y..to_y {
-            grid.set(start_x, y, v_char);
+            grid.set_if_empty(start_x, y, v_char);
         }
         // Arrow just before the end
         if end_y > start_y {
-            grid.set(end_x, end_y - 1, arrow_char);
+            grid.set_if_empty(end_x, end_y - 1, arrow_char);
         } else {
-            grid.set(end_x, end_y + 1, arrow_char);
+            grid.set_if_empty(end_x, end_y + 1, arrow_char);
         }
 
         // Draw label to the right of the vertical line
@@ -722,7 +801,7 @@ fn draw_vertical_edge(
             if edge_len > 0 {
                 let label_y = from_y + edge_len / 2;
                 for (i, c) in lbl.chars().enumerate() {
-                    grid.set(start_x + 1 + i, label_y, c);
+                    grid.set_if_empty(start_x + 1 + i, label_y, c);
                 }
             }
         }
@@ -738,16 +817,24 @@ fn draw_vertical_edge(
             (mid_y, start_y)
         };
         for y in from_y..to_y {
-            grid.set(start_x, y, v_char);
+            grid.set_if_empty(start_x, y, v_char);
         }
 
         // Turn 1 at (start_x, mid_y)
         let corner1 = if end_x > start_x {
-            if is_tb { chars.bl } else { chars.tl }
+            if is_tb {
+                chars.bl
+            } else {
+                chars.tl
+            }
         } else {
-            if is_tb { chars.br } else { chars.tr }
+            if is_tb {
+                chars.br
+            } else {
+                chars.tr
+            }
         };
-        grid.set(start_x, mid_y, corner1);
+        grid.set_if_empty(start_x, mid_y, corner1);
 
         // Horizontal from start_x to end_x
         let (from_x, to_x) = if end_x > start_x {
@@ -756,7 +843,7 @@ fn draw_vertical_edge(
             (end_x + 1, start_x)
         };
         for x in from_x..to_x {
-            grid.set(x, mid_y, h_char);
+            grid.set_if_empty(x, mid_y, h_char);
         }
 
         // Draw label on horizontal segment
@@ -765,18 +852,26 @@ fn draw_vertical_edge(
             if horiz_len > lbl.len() + 2 {
                 let label_x = from_x + (horiz_len - lbl.len()) / 2;
                 for (i, c) in lbl.chars().enumerate() {
-                    grid.set(label_x + i, mid_y, c);
+                    grid.set_if_empty(label_x + i, mid_y, c);
                 }
             }
         }
 
         // Turn 2 at (end_x, mid_y)
         let corner2 = if end_x > start_x {
-            if is_tb { chars.tr } else { chars.br }
+            if is_tb {
+                chars.tr
+            } else {
+                chars.br
+            }
         } else {
-            if is_tb { chars.tl } else { chars.bl }
+            if is_tb {
+                chars.tl
+            } else {
+                chars.bl
+            }
         };
-        grid.set(end_x, mid_y, corner2);
+        grid.set_if_empty(end_x, mid_y, corner2);
 
         // Vertical from mid to end
         let (from_y, to_y) = if end_y > mid_y {
@@ -785,14 +880,14 @@ fn draw_vertical_edge(
             (end_y, mid_y)
         };
         for y in from_y..to_y {
-            grid.set(end_x, y, v_char);
+            grid.set_if_empty(end_x, y, v_char);
         }
 
         // Arrow
         if end_y > mid_y {
-            grid.set(end_x, end_y - 1, arrow_char);
+            grid.set_if_empty(end_x, end_y - 1, arrow_char);
         } else {
-            grid.set(end_x, end_y + 1, arrow_char);
+            grid.set_if_empty(end_x, end_y + 1, arrow_char);
         }
     }
 }
@@ -827,7 +922,13 @@ mod tests {
     fn test_render_ascii() {
         let mut graph = parse_mermaid("flowchart LR\nA --> B").unwrap();
         compute_layout(&mut graph);
-        let output = render_graph(&graph, &RenderOptions { ascii: true, max_width: None });
+        let output = render_graph(
+            &graph,
+            &RenderOptions {
+                ascii: true,
+                max_width: None,
+            },
+        );
         assert!(output.contains("+---+"));
         assert!(output.contains(">"));
         assert!(!output.contains("┌"));

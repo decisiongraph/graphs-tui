@@ -1,3 +1,6 @@
+#![allow(clippy::too_many_arguments)]
+#![allow(clippy::collapsible_else_if)]
+
 //! graphs-tui - Terminal renderer for Mermaid and D2 diagrams
 //!
 //! # Mermaid Flowchart Example
@@ -59,7 +62,9 @@ mod state_parser;
 mod types;
 
 pub use error::MermaidError;
-pub use types::{Direction, Edge, EdgeStyle, Graph, Node, NodeId, NodeShape, RenderOptions, Subgraph};
+pub use types::{
+    Direction, Edge, EdgeStyle, Graph, Node, NodeId, NodeShape, RenderOptions, Subgraph,
+};
 
 use d2_parser::parse_d2;
 use layout::compute_layout;
@@ -120,10 +125,7 @@ pub fn detect_format(input: &str) -> DiagramFormat {
 /// # Returns
 /// * `Ok(String)` - Rendered diagram as string
 /// * `Err(MermaidError)` - Parse or layout error
-pub fn render_diagram(
-    input: &str,
-    options: RenderOptions,
-) -> Result<String, MermaidError> {
+pub fn render_diagram(input: &str, options: RenderOptions) -> Result<String, MermaidError> {
     match detect_format(input) {
         DiagramFormat::Mermaid => render_mermaid_to_tui(input, options),
         DiagramFormat::StateDiagram => render_state_diagram(input, options),
@@ -141,10 +143,7 @@ pub fn render_diagram(
 /// # Returns
 /// * `Ok(String)` - Rendered diagram as string
 /// * `Err(MermaidError)` - Parse or layout error
-pub fn render_mermaid_to_tui(
-    input: &str,
-    options: RenderOptions,
-) -> Result<String, MermaidError> {
+pub fn render_mermaid_to_tui(input: &str, options: RenderOptions) -> Result<String, MermaidError> {
     let mut graph = parse_mermaid(input)?;
     compute_layout(&mut graph);
     Ok(render_graph(&graph, &options))
@@ -159,10 +158,7 @@ pub fn render_mermaid_to_tui(
 /// # Returns
 /// * `Ok(String)` - Rendered diagram as string
 /// * `Err(MermaidError)` - Parse or layout error
-pub fn render_state_diagram(
-    input: &str,
-    options: RenderOptions,
-) -> Result<String, MermaidError> {
+pub fn render_state_diagram(input: &str, options: RenderOptions) -> Result<String, MermaidError> {
     let mut graph = parse_state_diagram(input)?;
     compute_layout(&mut graph);
     Ok(render_graph(&graph, &options))
@@ -179,10 +175,7 @@ pub fn render_state_diagram(
 /// # Returns
 /// * `Ok(String)` - Rendered chart as string
 /// * `Err(MermaidError)` - Parse error
-pub fn render_pie_chart(
-    input: &str,
-    options: RenderOptions,
-) -> Result<String, MermaidError> {
+pub fn render_pie_chart(input: &str, options: RenderOptions) -> Result<String, MermaidError> {
     let chart = parse_pie(input)?;
     Ok(render_pie(&chart, &options))
 }
@@ -196,10 +189,7 @@ pub fn render_pie_chart(
 /// # Returns
 /// * `Ok(String)` - Rendered diagram as string
 /// * `Err(MermaidError)` - Parse or layout error
-pub fn render_d2_to_tui(
-    input: &str,
-    options: RenderOptions,
-) -> Result<String, MermaidError> {
+pub fn render_d2_to_tui(input: &str, options: RenderOptions) -> Result<String, MermaidError> {
     let mut graph = parse_d2(input)?;
     compute_layout(&mut graph);
     Ok(render_graph(&graph, &options))

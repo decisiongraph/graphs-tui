@@ -32,7 +32,7 @@ pub fn parse_state_diagram(input: &str) -> Result<Graph, MermaidError> {
     let mut current_composite: Option<String> = None;
     let mut state_counter = 0;
 
-    for (_i, line) in lines.iter().enumerate().skip(1) {
+    for line in lines.iter().skip(1) {
         // Skip direction declarations
         if line.starts_with("direction") {
             continue;
@@ -64,18 +64,23 @@ pub fn parse_state_diagram(input: &str) -> Result<Graph, MermaidError> {
 
         // Handle transitions: State1 --> State2 or State1 --> State2: label
         if line.contains("-->") {
-            parse_transition(&mut graph, line, current_composite.as_deref(), &mut state_counter)?;
+            parse_transition(
+                &mut graph,
+                line,
+                current_composite.as_deref(),
+                &mut state_counter,
+            )?;
             continue;
         }
 
         // Handle simple state declaration (just an ID)
         if is_valid_state_id(line) {
             let id = line.to_string();
-            if !graph.nodes.contains_key(&id) {
-                let mut node = Node::with_shape(id.clone(), id.clone(), NodeShape::Rounded);
+            graph.nodes.entry(id).or_insert_with_key(|key| {
+                let mut node = Node::with_shape(key.clone(), key.clone(), NodeShape::Rounded);
                 node.subgraph = current_composite.clone();
-                graph.nodes.insert(id, node);
-            }
+                node
+            });
         }
     }
 
@@ -101,10 +106,10 @@ fn parse_state_declaration(line: &str) -> Result<(String, String), MermaidError>
     }
 
     // Handle: state "Description" as ID
-    if rest.starts_with('"') {
-        if let Some(end_quote) = rest[1..].find('"') {
-            let description = &rest[1..end_quote + 1];
-            let after_quote = &rest[end_quote + 2..].trim();
+    if let Some(stripped) = rest.strip_prefix('"') {
+        if let Some(end_quote) = stripped.find('"') {
+            let description = &stripped[..end_quote];
+            let after_quote = stripped[end_quote + 1..].trim();
             if after_quote.starts_with("as") {
                 let id = after_quote.strip_prefix("as").unwrap_or("").trim();
                 return Ok((id.to_string(), description.to_string()));

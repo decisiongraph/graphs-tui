@@ -1,4 +1,7 @@
-use graphs_tui::{render_mermaid_to_tui, render_d2_to_tui, render_diagram, MermaidError, RenderOptions, DiagramFormat, detect_format, render_state_diagram, render_pie_chart};
+use graphs_tui::{
+    detect_format, render_d2_to_tui, render_diagram, render_mermaid_to_tui, render_pie_chart,
+    render_state_diagram, DiagramFormat, MermaidError, RenderOptions,
+};
 
 #[test]
 fn test_simple_lr_flowchart() {
@@ -29,7 +32,14 @@ fn test_labels_correctly() {
 #[test]
 fn test_ascii_mode() {
     let input = "flowchart LR\nA --> B";
-    let result = render_mermaid_to_tui(input, RenderOptions { ascii: true, max_width: None }).unwrap();
+    let result = render_mermaid_to_tui(
+        input,
+        RenderOptions {
+            ascii: true,
+            max_width: None,
+        },
+    )
+    .unwrap();
     assert!(result.contains("+---+"));
     assert!(result.contains(">"));
     assert!(!result.contains("┌"));
@@ -39,7 +49,10 @@ fn test_ascii_mode() {
 fn test_unsupported_diagram_type() {
     let input = "sequenceDiagram\nA->B: hi";
     let result = render_mermaid_to_tui(input, RenderOptions::default());
-    assert!(matches!(result, Err(MermaidError::ParseError { line: 1, .. })));
+    assert!(matches!(
+        result,
+        Err(MermaidError::ParseError { line: 1, .. })
+    ));
 }
 
 #[test]
@@ -385,7 +398,10 @@ fn test_d2_line() {
 /// Test format detection for Mermaid
 #[test]
 fn test_format_detection_mermaid() {
-    assert_eq!(detect_format("flowchart LR\nA --> B"), DiagramFormat::Mermaid);
+    assert_eq!(
+        detect_format("flowchart LR\nA --> B"),
+        DiagramFormat::Mermaid
+    );
     assert_eq!(detect_format("graph TD\nA --> B"), DiagramFormat::Mermaid);
     assert_eq!(detect_format("A --> B --> C"), DiagramFormat::Mermaid);
 }
@@ -394,7 +410,10 @@ fn test_format_detection_mermaid() {
 #[test]
 fn test_format_detection_d2() {
     assert_eq!(detect_format("A -> B"), DiagramFormat::D2);
-    assert_eq!(detect_format("server: Web Server\nserver -> db"), DiagramFormat::D2);
+    assert_eq!(
+        detect_format("server: Web Server\nserver -> db"),
+        DiagramFormat::D2
+    );
 }
 
 /// Test auto-detect render function

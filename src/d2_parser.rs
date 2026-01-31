@@ -22,7 +22,7 @@ pub fn parse_d2(input: &str) -> Result<Graph, MermaidError> {
     let mut current_subgraph: Option<String> = None;
     let mut brace_depth = 0;
 
-    for (_line_num, line) in trimmed.lines().enumerate() {
+    for line in trimmed.lines() {
         let line = line.trim();
 
         // Skip empty lines and comments
@@ -82,15 +82,16 @@ pub fn parse_d2(input: &str) -> Result<Graph, MermaidError> {
         // Parse as node declaration
         let (id, label) = parse_d2_label(line);
         if !id.is_empty() {
-            if graph.nodes.contains_key(&id) {
-                // Update label if node exists
-                if let Some(node) = graph.nodes.get_mut(&id) {
-                    node.label = label;
+            use std::collections::hash_map::Entry;
+            match graph.nodes.entry(id) {
+                Entry::Occupied(mut e) => {
+                    e.get_mut().label = label;
                 }
-            } else {
-                let mut node = Node::new(id.clone(), label);
-                node.subgraph = current_subgraph.clone();
-                graph.nodes.insert(id, node);
+                Entry::Vacant(e) => {
+                    let mut node = Node::new(e.key().clone(), label);
+                    node.subgraph = current_subgraph.clone();
+                    e.insert(node);
+                }
             }
         }
     }
@@ -99,7 +100,9 @@ pub fn parse_d2(input: &str) -> Result<Graph, MermaidError> {
         return Err(MermaidError::ParseError {
             line: 1,
             message: "No valid D2 content found".to_string(),
-            suggestion: Some("D2 syntax: 'A -> B' for connections, 'name: Label' for nodes".to_string()),
+            suggestion: Some(
+                "D2 syntax: 'A -> B' for connections, 'name: Label' for nodes".to_string(),
+            ),
         });
     }
 
@@ -108,11 +111,11 @@ pub fn parse_d2(input: &str) -> Result<Graph, MermaidError> {
 
 /// Ensure a node exists in the graph
 fn ensure_node_exists(graph: &mut Graph, id: &str, subgraph: Option<&str>) {
-    if !graph.nodes.contains_key(id) {
+    graph.nodes.entry(id.to_string()).or_insert_with(|| {
         let mut node = Node::new(id.to_string(), id.to_string());
         node.subgraph = subgraph.map(String::from);
-        graph.nodes.insert(id.to_string(), node);
-    }
+        node
+    });
 }
 
 /// Parse D2 label syntax: `id: "Label"` or `id: Label` or just `id`
@@ -143,10 +146,10 @@ fn parse_d2_label(s: &str) -> (String, String) {
 fn parse_d2_connection(line: &str) -> Option<(NodeId, NodeId, EdgeStyle, Option<String>)> {
     // Connection patterns in order of precedence
     let patterns = [
-        ("<->", EdgeStyle::Arrow, true),   // bidirectional
-        ("->", EdgeStyle::Arrow, false),   // forward arrow
-        ("<-", EdgeStyle::Arrow, false),   // backward arrow (we'll swap)
-        ("--", EdgeStyle::Line, false),    // simple line
+        ("<->", EdgeStyle::Arrow, true), // bidirectional
+        ("->", EdgeStyle::Arrow, false), // forward arrow
+        ("<-", EdgeStyle::Arrow, false), // backward arrow (we'll swap)
+        ("--", EdgeStyle::Line, false),  // simple line
     ];
 
     for (pattern, style, _is_bidirectional) in patterns {
@@ -281,7 +284,10 @@ db: Database
 db.shape: cylinder
 "#;
         let graph = parse_d2(input).unwrap();
-        assert!(matches!(graph.nodes.get("db").unwrap().shape, NodeShape::Cylinder));
+        assert!(matches!(
+            graph.nodes.get("db").unwrap().shape,
+            NodeShape::Cylinder
+        ));
     }
 
     #[test]
@@ -296,7 +302,10 @@ api -> db
         let graph = parse_d2(input).unwrap();
         assert_eq!(graph.subgraphs.len(), 1);
         assert_eq!(graph.subgraphs[0].id, "backend");
-        assert_eq!(graph.nodes.get("api").unwrap().subgraph, Some("backend".to_string()));
+        assert_eq!(
+            graph.nodes.get("api").unwrap().subgraph,
+            Some("backend".to_string())
+        );
     }
 
     #[test]

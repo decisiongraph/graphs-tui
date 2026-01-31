@@ -47,7 +47,7 @@ pub fn parse_pie_chart(input: &str) -> Result<PieChart, MermaidError> {
     let mut title = None;
     let mut slices = Vec::new();
 
-    for (_i, line) in lines.iter().enumerate().skip(1) {
+    for line in lines.iter().skip(1) {
         // Parse title
         if line.to_lowercase().starts_with("title") {
             let title_text = line.strip_prefix("title").unwrap_or(line);
@@ -86,10 +86,7 @@ fn parse_slice(line: &str) -> Option<(String, f64)> {
     let value_part = line[colon_idx + 1..].trim();
 
     // Extract label (remove quotes)
-    let label = label_part
-        .trim_matches('"')
-        .trim_matches('\'')
-        .to_string();
+    let label = label_part.trim_matches('"').trim_matches('\'').to_string();
 
     // Parse value
     let value: f64 = value_part.parse().ok()?;
@@ -114,7 +111,12 @@ pub fn render_pie_chart(chart: &PieChart, _options: &RenderOptions) -> String {
     }
 
     // Find max label width for alignment
-    let max_label_width = chart.slices.iter().map(|s| s.label.len()).max().unwrap_or(10);
+    let max_label_width = chart
+        .slices
+        .iter()
+        .map(|s| s.label.len())
+        .max()
+        .unwrap_or(10);
     let bar_width = 30;
 
     // Render each slice as a horizontal bar
@@ -133,8 +135,8 @@ pub fn render_pie_chart(chart: &PieChart, _options: &RenderOptions) -> String {
             '░'
         };
 
-        let bar: String = std::iter::repeat(bar_char).take(bar_length).collect();
-        let padding: String = std::iter::repeat(' ').take(bar_width - bar_length).collect();
+        let bar: String = std::iter::repeat_n(bar_char, bar_length).collect();
+        let padding: String = " ".repeat(bar_width - bar_length);
 
         // Format: Label  |████████████| value (percentage%)
         output.push_str(&format!(
@@ -199,8 +201,14 @@ mod tests {
         let chart = PieChart {
             title: Some("Test".to_string()),
             slices: vec![
-                PieSlice { label: "A".to_string(), value: 60.0 },
-                PieSlice { label: "B".to_string(), value: 40.0 },
+                PieSlice {
+                    label: "A".to_string(),
+                    value: 60.0,
+                },
+                PieSlice {
+                    label: "B".to_string(),
+                    value: 40.0,
+                },
             ],
             show_data: false,
         };

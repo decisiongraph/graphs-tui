@@ -18,7 +18,7 @@ pub enum Direction {
 
 impl Direction {
     /// Parse direction from string
-    pub fn from_str(s: &str) -> Option<Direction> {
+    pub fn parse(s: &str) -> Option<Direction> {
         match s.to_uppercase().as_str() {
             "LR" => Some(Direction::LR),
             "RL" => Some(Direction::RL),

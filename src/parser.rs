@@ -49,9 +49,7 @@ fn parse_flowchart_header(line: &str) -> Result<Direction, MermaidError> {
         return Err(MermaidError::ParseError {
             line: 1,
             message: "Unsupported diagram type or missing direction".to_string(),
-            suggestion: Some(
-                "Use 'flowchart LR', 'graph TD', etc.".to_string(),
-            ),
+            suggestion: Some("Use 'flowchart LR', 'graph TD', etc.".to_string()),
         });
     }
 
@@ -65,7 +63,7 @@ fn parse_flowchart_header(line: &str) -> Result<Direction, MermaidError> {
         });
     }
 
-    Direction::from_str(parts[1]).ok_or_else(|| MermaidError::ParseError {
+    Direction::parse(parts[1]).ok_or_else(|| MermaidError::ParseError {
         line: 1,
         message: format!("Invalid direction: {}", parts[1]),
         suggestion: Some("Use LR, RL, TB, TD, or BT".to_string()),
@@ -106,12 +104,30 @@ struct EdgePattern {
 
 const EDGE_PATTERNS: &[EdgePattern] = &[
     // Order matters - check longer/more specific patterns first
-    EdgePattern { pattern: "-.->", style: EdgeStyle::DottedArrow },
-    EdgePattern { pattern: "-.-", style: EdgeStyle::DottedLine },
-    EdgePattern { pattern: "==>", style: EdgeStyle::ThickArrow },
-    EdgePattern { pattern: "===", style: EdgeStyle::ThickLine },
-    EdgePattern { pattern: "-->", style: EdgeStyle::Arrow },
-    EdgePattern { pattern: "---", style: EdgeStyle::Line },
+    EdgePattern {
+        pattern: "-.->",
+        style: EdgeStyle::DottedArrow,
+    },
+    EdgePattern {
+        pattern: "-.-",
+        style: EdgeStyle::DottedLine,
+    },
+    EdgePattern {
+        pattern: "==>",
+        style: EdgeStyle::ThickArrow,
+    },
+    EdgePattern {
+        pattern: "===",
+        style: EdgeStyle::ThickLine,
+    },
+    EdgePattern {
+        pattern: "-->",
+        style: EdgeStyle::Arrow,
+    },
+    EdgePattern {
+        pattern: "---",
+        style: EdgeStyle::Line,
+    },
 ];
 
 /// Find edge pattern in line and return (pattern, style)
@@ -125,7 +141,12 @@ fn find_edge_pattern(line: &str) -> Option<(&'static str, EdgeStyle)> {
 }
 
 /// Parse a single line (node declaration or edge)
-fn parse_line(graph: &mut Graph, line: &str, line_num: usize, current_subgraph: Option<&str>) -> Result<(), MermaidError> {
+fn parse_line(
+    graph: &mut Graph,
+    line: &str,
+    line_num: usize,
+    current_subgraph: Option<&str>,
+) -> Result<(), MermaidError> {
     // Find which edge pattern is used
     if let Some((pattern, style)) = find_edge_pattern(line) {
         // Split by the edge pattern
@@ -208,10 +229,10 @@ fn add_or_update_node(
 /// Parse edge label prefix: |label| Node -> (Some(label), "Node")
 fn parse_edge_label_prefix(segment: &str) -> (Option<String>, &str) {
     let segment = segment.trim();
-    if segment.starts_with('|') {
-        if let Some(end_pipe) = segment[1..].find('|') {
-            let label = segment[1..=end_pipe].to_string();
-            let rest = segment[end_pipe + 2..].trim();
+    if let Some(stripped) = segment.strip_prefix('|') {
+        if let Some(end_pipe) = stripped.find('|') {
+            let label = stripped[..end_pipe].to_string();
+            let rest = stripped[end_pipe + 1..].trim();
             return (Some(label), rest);
         }
     }
@@ -240,7 +261,10 @@ fn parse_edge_label_suffix(segment: &str) -> (&str, Option<String>) {
 
 /// Parse a node segment and return (id, label, shape)
 /// Supports many mermaid shapes including hexagon, parallelogram, trapezoid
-fn parse_node_segment(segment: &str, line_num: usize) -> Result<(NodeId, Option<String>, NodeShape), MermaidError> {
+fn parse_node_segment(
+    segment: &str,
+    line_num: usize,
+) -> Result<(NodeId, Option<String>, NodeShape), MermaidError> {
     let segment = segment.trim();
 
     // Try each shape pattern
@@ -319,7 +343,12 @@ fn parse_node_segment(segment: &str, line_num: usize) -> Result<(NodeId, Option<
 }
 
 /// Try to parse a node with given delimiters
-fn try_parse_shape(segment: &str, open: &str, close: &str, shape: NodeShape) -> Option<(String, String, NodeShape)> {
+fn try_parse_shape(
+    segment: &str,
+    open: &str,
+    close: &str,
+    shape: NodeShape,
+) -> Option<(String, String, NodeShape)> {
     if let Some(start) = segment.find(open) {
         let id = &segment[..start];
         if let Some(end) = segment.rfind(close) {
@@ -335,7 +364,11 @@ fn try_parse_shape(segment: &str, open: &str, close: &str, shape: NodeShape) -> 
 }
 
 /// Validate the parsed node result
-fn validate_node_result(result: (String, String, NodeShape), segment: &str, line_num: usize) -> Result<(NodeId, Option<String>, NodeShape), MermaidError> {
+fn validate_node_result(
+    result: (String, String, NodeShape),
+    segment: &str,
+    line_num: usize,
+) -> Result<(NodeId, Option<String>, NodeShape), MermaidError> {
     let (id, label, shape) = result;
     if !is_valid_id(&id) {
         return Err(MermaidError::ParseError {
@@ -386,9 +419,33 @@ mod tests {
         let input = "flowchart LR\nA --> B --> C --> D";
         let graph = parse_mermaid(input).unwrap();
         assert_eq!(graph.edges.len(), 3);
-        assert_eq!(graph.edges[0], Edge { from: "A".to_string(), to: "B".to_string(), label: None, style: EdgeStyle::Arrow });
-        assert_eq!(graph.edges[1], Edge { from: "B".to_string(), to: "C".to_string(), label: None, style: EdgeStyle::Arrow });
-        assert_eq!(graph.edges[2], Edge { from: "C".to_string(), to: "D".to_string(), label: None, style: EdgeStyle::Arrow });
+        assert_eq!(
+            graph.edges[0],
+            Edge {
+                from: "A".to_string(),
+                to: "B".to_string(),
+                label: None,
+                style: EdgeStyle::Arrow
+            }
+        );
+        assert_eq!(
+            graph.edges[1],
+            Edge {
+                from: "B".to_string(),
+                to: "C".to_string(),
+                label: None,
+                style: EdgeStyle::Arrow
+            }
+        );
+        assert_eq!(
+            graph.edges[2],
+            Edge {
+                from: "C".to_string(),
+                to: "D".to_string(),
+                label: None,
+                style: EdgeStyle::Arrow
+            }
+        );
     }
 
     #[test]
@@ -487,13 +544,17 @@ mod tests {
 
     #[test]
     fn test_parse_subgraph() {
-        let input = "flowchart TB\nsubgraph Backend [Backend Services]\nA[API]\nB[DB]\nend\nA --> B";
+        let input =
+            "flowchart TB\nsubgraph Backend [Backend Services]\nA[API]\nB[DB]\nend\nA --> B";
         let graph = parse_mermaid(input).unwrap();
         assert_eq!(graph.subgraphs.len(), 1);
         assert_eq!(graph.subgraphs[0].id, "Backend");
         assert_eq!(graph.subgraphs[0].label, "Backend Services");
         assert_eq!(graph.subgraphs[0].nodes.len(), 2);
-        assert_eq!(graph.nodes.get("A").unwrap().subgraph, Some("Backend".to_string()));
+        assert_eq!(
+            graph.nodes.get("A").unwrap().subgraph,
+            Some("Backend".to_string())
+        );
     }
 
     #[test]
@@ -517,7 +578,10 @@ mod tests {
     fn test_parse_parallelogram_shape() {
         let input = "flowchart LR\nA[/Parallelogram/]";
         let graph = parse_mermaid(input).unwrap();
-        assert_eq!(graph.nodes.get("A").unwrap().shape, NodeShape::Parallelogram);
+        assert_eq!(
+            graph.nodes.get("A").unwrap().shape,
+            NodeShape::Parallelogram
+        );
         assert_eq!(graph.nodes.get("A").unwrap().label, "Parallelogram");
     }
 
@@ -525,7 +589,10 @@ mod tests {
     fn test_parse_parallelogram_alt_shape() {
         let input = "flowchart LR\nA[\\Parallelogram Alt\\]";
         let graph = parse_mermaid(input).unwrap();
-        assert_eq!(graph.nodes.get("A").unwrap().shape, NodeShape::ParallelogramAlt);
+        assert_eq!(
+            graph.nodes.get("A").unwrap().shape,
+            NodeShape::ParallelogramAlt
+        );
     }
 
     #[test]
