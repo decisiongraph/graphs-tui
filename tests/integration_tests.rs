@@ -1,6 +1,6 @@
 use graphs_tui::{
     detect_format, render_d2_to_tui, render_diagram, render_mermaid_to_tui, render_pie_chart,
-    render_state_diagram, DiagramFormat, MermaidError, RenderOptions,
+    render_sequence_diagram, render_state_diagram, DiagramFormat, MermaidError, RenderOptions,
 };
 
 #[test]
@@ -584,6 +584,59 @@ fn test_pie_chart_show_data() {
     assert!(result.contains("Completed"));
     assert!(result.contains("45"));
     println!("Pie chart showData:\n{}", result);
+}
+
+// ============================================
+// Sequence Diagram Tests
+// ============================================
+
+/// Test simple sequence diagram
+#[test]
+fn test_sequence_diagram_simple() {
+    let input = r#"sequenceDiagram
+    Alice->>Bob: Hello Bob!
+    Bob-->>Alice: Hi Alice!
+"#;
+    let result = render_sequence_diagram(input, RenderOptions::default()).unwrap();
+    assert!(result.contains("Alice"));
+    assert!(result.contains("Bob"));
+    assert!(result.contains("Hello Bob!"));
+    assert!(result.contains("Hi Alice!"));
+    println!("Sequence diagram simple:\n{}", result);
+}
+
+/// Test sequence diagram with participants
+#[test]
+fn test_sequence_diagram_participants() {
+    let input = r#"sequenceDiagram
+    participant A as Alice
+    participant B as Bob
+    A->>B: Message
+"#;
+    let result = render_sequence_diagram(input, RenderOptions::default()).unwrap();
+    assert!(result.contains("Alice"));
+    assert!(result.contains("Bob"));
+    println!("Sequence diagram participants:\n{}", result);
+}
+
+/// Test sequence diagram format detection
+#[test]
+fn test_sequence_diagram_detection() {
+    let input = "sequenceDiagram\n    A->>B: Hi";
+    assert_eq!(detect_format(input), DiagramFormat::SequenceDiagram);
+}
+
+/// Test sequence diagram auto-render
+#[test]
+fn test_sequence_diagram_auto() {
+    let input = r#"sequenceDiagram
+    Client->>Server: Request
+    Server-->>Client: Response
+"#;
+    let result = render_diagram(input, RenderOptions::default()).unwrap();
+    assert!(result.contains("Client"));
+    assert!(result.contains("Server"));
+    println!("Sequence auto-detect:\n{}", result);
 }
 
 // ============================================

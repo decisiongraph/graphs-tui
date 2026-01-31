@@ -39,6 +39,15 @@
 //! println!("{}", output);
 //! ```
 //!
+//! # Sequence Diagram Example
+//! ```
+//! use graphs_tui::{render_sequence_diagram, RenderOptions};
+//!
+//! let input = "sequenceDiagram\n    Alice->>Bob: Hello\n    Bob-->>Alice: Hi!";
+//! let output = render_sequence_diagram(input, RenderOptions::default()).unwrap();
+//! println!("{}", output);
+//! ```
+//!
 //! # Auto-detect Format
 //! ```
 //! use graphs_tui::{render_diagram, RenderOptions};
@@ -58,6 +67,7 @@ mod layout;
 mod parser;
 mod pie_parser;
 mod renderer;
+mod seq_parser;
 mod state_parser;
 mod types;
 
@@ -71,6 +81,7 @@ use layout::compute_layout;
 use parser::parse_mermaid;
 use pie_parser::{parse_pie_chart as parse_pie, render_pie_chart as render_pie};
 use renderer::render_graph;
+use seq_parser::{parse_sequence_diagram as parse_seq, render_sequence_diagram as render_seq};
 use state_parser::parse_state_diagram;
 
 /// Diagram format
@@ -80,6 +91,8 @@ pub enum DiagramFormat {
     Mermaid,
     /// Mermaid state diagram
     StateDiagram,
+    /// Mermaid sequence diagram
+    SequenceDiagram,
     /// Mermaid pie chart
     PieChart,
     /// D2 diagram language
@@ -92,6 +105,9 @@ pub fn detect_format(input: &str) -> DiagramFormat {
     let lower = trimmed.to_lowercase();
 
     // Check for specific diagram types first
+    if lower.starts_with("sequencediagram") {
+        return DiagramFormat::SequenceDiagram;
+    }
     if lower.starts_with("statediagram") {
         return DiagramFormat::StateDiagram;
     }
@@ -129,6 +145,7 @@ pub fn render_diagram(input: &str, options: RenderOptions) -> Result<String, Mer
     match detect_format(input) {
         DiagramFormat::Mermaid => render_mermaid_to_tui(input, options),
         DiagramFormat::StateDiagram => render_state_diagram(input, options),
+        DiagramFormat::SequenceDiagram => render_sequence_diagram(input, options),
         DiagramFormat::PieChart => render_pie_chart(input, options),
         DiagramFormat::D2 => render_d2_to_tui(input, options),
     }
@@ -193,4 +210,21 @@ pub fn render_d2_to_tui(input: &str, options: RenderOptions) -> Result<String, M
     let mut graph = parse_d2(input)?;
     compute_layout(&mut graph);
     Ok(render_graph(&graph, &options))
+}
+
+/// Render mermaid sequence diagram to terminal-displayable text
+///
+/// # Arguments
+/// * `input` - Mermaid sequence diagram syntax string
+/// * `options` - Rendering options (ASCII mode, max width)
+///
+/// # Returns
+/// * `Ok(String)` - Rendered diagram as string
+/// * `Err(MermaidError)` - Parse error
+pub fn render_sequence_diagram(
+    input: &str,
+    options: RenderOptions,
+) -> Result<String, MermaidError> {
+    let diagram = parse_seq(input)?;
+    Ok(render_seq(&diagram, &options))
 }
