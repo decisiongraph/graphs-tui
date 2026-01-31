@@ -30,6 +30,24 @@ pub fn parse_d2(input: &str) -> Result<Graph, MermaidError> {
             continue;
         }
 
+        // Handle direction property at root level
+        if brace_depth == 0 && line.starts_with("direction:") {
+            let dir_str = line.trim_start_matches("direction:").trim().to_lowercase();
+            graph.direction = match dir_str.as_str() {
+                "right" => Direction::LR,
+                "left" => Direction::RL,
+                "down" => Direction::TB,
+                "up" => Direction::BT,
+                _ => Direction::TB,
+            };
+            continue;
+        }
+
+        // Skip style properties (style.fill, style.stroke, etc.)
+        if line.contains("style.") && line.contains(':') {
+            continue;
+        }
+
         // Handle opening braces (container start)
         if line.ends_with('{') {
             let container_def = line.trim_end_matches('{').trim();
@@ -75,6 +93,22 @@ pub fn parse_d2(input: &str) -> Result<Graph, MermaidError> {
                 let mut node = Node::with_shape(id.clone(), id.clone(), shape);
                 node.subgraph = current_subgraph.clone();
                 graph.nodes.insert(id, node);
+            }
+            continue;
+        }
+
+        // Handle standalone shape: inside container (applies to parent)
+        if brace_depth > 0 && line.starts_with("shape:") {
+            if let Some(ref container_id) = current_subgraph {
+                let shape_str = line.trim_start_matches("shape:").trim().to_lowercase();
+                let shape = parse_shape_str(&shape_str);
+                // Apply shape to the container node (create if needed)
+                if let Some(node) = graph.nodes.get_mut(container_id) {
+                    node.shape = shape;
+                } else {
+                    let node = Node::with_shape(container_id.clone(), container_id.clone(), shape);
+                    graph.nodes.insert(container_id.clone(), node);
+                }
             }
             continue;
         }
@@ -184,21 +218,9 @@ fn parse_d2_connection(line: &str) -> Option<(NodeId, NodeId, EdgeStyle, Option<
     None
 }
 
-/// Parse shape property: `id.shape: type`
-fn parse_shape_property(line: &str) -> Option<(NodeId, NodeShape)> {
-    if !line.contains(".shape:") {
-        return None;
-    }
-
-    let parts: Vec<&str> = line.splitn(2, ".shape:").collect();
-    if parts.len() != 2 {
-        return None;
-    }
-
-    let id = parts[0].trim().to_string();
-    let shape_str = parts[1].trim().to_lowercase();
-
-    let shape = match shape_str.as_str() {
+/// Parse shape string into NodeShape
+fn parse_shape_str(shape_str: &str) -> NodeShape {
+    match shape_str {
         "rectangle" | "rect" => NodeShape::Rectangle,
         "square" => NodeShape::Rectangle,
         "circle" => NodeShape::Circle,
@@ -213,9 +235,24 @@ fn parse_shape_property(line: &str) -> Option<(NodeId, NodeShape)> {
         "person" => NodeShape::Circle, // Approximate with circle
         "sql_table" | "class" => NodeShape::Table,
         _ => NodeShape::Rectangle,
-    };
+    }
+}
 
-    Some((id, shape))
+/// Parse shape property: `id.shape: type`
+fn parse_shape_property(line: &str) -> Option<(NodeId, NodeShape)> {
+    if !line.contains(".shape:") {
+        return None;
+    }
+
+    let parts: Vec<&str> = line.splitn(2, ".shape:").collect();
+    if parts.len() != 2 {
+        return None;
+    }
+
+    let id = parts[0].trim().to_string();
+    let shape_str = parts[1].trim().to_lowercase();
+
+    Some((id, parse_shape_str(&shape_str)))
 }
 
 #[cfg(test)]
@@ -336,5 +373,56 @@ A -> B
     fn test_parse_d2_empty() {
         let result = parse_d2("");
         assert!(matches!(result, Err(MermaidError::EmptyInput)));
+    }
+
+    #[test]
+    fn test_parse_d2_style_and_direction_not_nodes() {
+        // Issue #1: style.fill, shape, direction should not create nodes
+        let input = r##"
+direction: right
+
+input: Raw Data Block {
+  shape: document
+}
+
+center: Statistical Center {
+  shape: diamond
+  style.fill: "#4CAF50"
+}
+
+forward: Forward Stream {
+  shape: hexagon
+  style.fill: "#2196F3"
+}
+
+input -> center: Find center
+center -> forward: center → end
+"##;
+        let graph = parse_d2(input).unwrap();
+
+        // Direction should be LR (right)
+        assert!(matches!(graph.direction, Direction::LR));
+
+        // Should have exactly 3 nodes: input, center, forward
+        assert_eq!(graph.nodes.len(), 3);
+        assert!(graph.nodes.contains_key("input"));
+        assert!(graph.nodes.contains_key("center"));
+        assert!(graph.nodes.contains_key("forward"));
+
+        // Should NOT have nodes for style values or shape names
+        assert!(!graph.nodes.contains_key("right"));
+        assert!(!graph.nodes.contains_key("document"));
+        assert!(!graph.nodes.contains_key("diamond"));
+        assert!(!graph.nodes.contains_key("hexagon"));
+
+        // Shapes should be applied to containers
+        assert!(matches!(
+            graph.nodes.get("center").unwrap().shape,
+            NodeShape::Diamond
+        ));
+        assert!(matches!(
+            graph.nodes.get("forward").unwrap().shape,
+            NodeShape::Hexagon
+        ));
     }
 }

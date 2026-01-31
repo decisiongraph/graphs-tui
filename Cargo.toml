@@ -1,6 +1,6 @@
 [package]
 name = "graphs-tui"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2021"
 description = "Terminal renderer for Mermaid and D2 diagrams - flowcharts, state diagrams, pie charts in Unicode/ASCII"
 license = "AGPL-3.0-or-later"
