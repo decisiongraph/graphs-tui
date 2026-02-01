@@ -124,11 +124,13 @@ pub fn render_graph(graph: &Graph, options: &RenderOptions) -> String {
     let output = grid.to_string();
 
     // Apply max_width constraint if set
+    // Use chars().count() for visual width, not len() which counts bytes
     if let Some(max_width) = options.max_width {
         output
             .lines()
             .map(|line| {
-                if line.len() > max_width {
+                let char_count = line.chars().count();
+                if char_count > max_width {
                     // Truncate and add ellipsis indicator
                     let mut truncated: String =
                         line.chars().take(max_width.saturating_sub(1)).collect();
