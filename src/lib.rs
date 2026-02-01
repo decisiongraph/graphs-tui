@@ -72,12 +72,12 @@ mod state_parser;
 mod types;
 
 pub use error::MermaidError;
+pub use layout::{compute_layout, compute_layout_with_options};
 pub use types::{
     Direction, Edge, EdgeStyle, Graph, Node, NodeId, NodeShape, RenderOptions, Subgraph,
 };
 
 use d2_parser::parse_d2;
-use layout::compute_layout;
 use parser::parse_mermaid;
 use pie_parser::{parse_pie_chart as parse_pie, render_pie_chart as render_pie};
 use renderer::render_graph;
@@ -162,7 +162,7 @@ pub fn render_diagram(input: &str, options: RenderOptions) -> Result<String, Mer
 /// * `Err(MermaidError)` - Parse or layout error
 pub fn render_mermaid_to_tui(input: &str, options: RenderOptions) -> Result<String, MermaidError> {
     let mut graph = parse_mermaid(input)?;
-    compute_layout(&mut graph);
+    compute_layout_with_options(&mut graph, &options);
     Ok(render_graph(&graph, &options))
 }
 
@@ -177,7 +177,7 @@ pub fn render_mermaid_to_tui(input: &str, options: RenderOptions) -> Result<Stri
 /// * `Err(MermaidError)` - Parse or layout error
 pub fn render_state_diagram(input: &str, options: RenderOptions) -> Result<String, MermaidError> {
     let mut graph = parse_state_diagram(input)?;
-    compute_layout(&mut graph);
+    compute_layout_with_options(&mut graph, &options);
     Ok(render_graph(&graph, &options))
 }
 
@@ -208,7 +208,7 @@ pub fn render_pie_chart(input: &str, options: RenderOptions) -> Result<String, M
 /// * `Err(MermaidError)` - Parse or layout error
 pub fn render_d2_to_tui(input: &str, options: RenderOptions) -> Result<String, MermaidError> {
     let mut graph = parse_d2(input)?;
-    compute_layout(&mut graph);
+    compute_layout_with_options(&mut graph, &options);
     Ok(render_graph(&graph, &options))
 }
 

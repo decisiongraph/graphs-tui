@@ -1,29 +1,85 @@
-use crate::types::{Direction, Graph, NodeId};
+use crate::types::{Direction, Graph, NodeId, RenderOptions};
 use std::collections::{HashMap, VecDeque};
 
 const MIN_NODE_WIDTH: usize = 5;
 const NODE_HEIGHT: usize = 3;
-const HORIZONTAL_GAP: usize = 8;
-const VERTICAL_GAP: usize = 4;
+const DEFAULT_HORIZONTAL_GAP: usize = 8;
+const DEFAULT_VERTICAL_GAP: usize = 4;
+const MIN_GAP: usize = 2;
 
 const SUBGRAPH_PADDING: usize = 2;
 
 /// Compute layout for all nodes in the graph
 pub fn compute_layout(graph: &mut Graph) {
-    // 1. Compute node sizes
+    compute_layout_with_options(graph, &RenderOptions::default());
+}
+
+/// Compute layout for all nodes with render options (considers max_width)
+pub fn compute_layout_with_options(graph: &mut Graph, options: &RenderOptions) {
+    // 1. Compute node sizes (use chars().count() for proper Unicode handling)
     for node in graph.nodes.values_mut() {
-        node.width = (node.label.len() + 2).max(MIN_NODE_WIDTH);
+        node.width = (node.label.chars().count() + 2).max(MIN_NODE_WIDTH);
         node.height = NODE_HEIGHT;
     }
 
     // 2. Topological layering
     let layers = assign_layers(graph);
 
-    // 3. Position assignment based on direction
-    assign_coordinates(graph, &layers);
+    // 3. Calculate gaps based on available width
+    let (h_gap, v_gap) = calculate_gaps(graph, &layers, options.max_width);
 
-    // 4. Compute subgraph bounding boxes
+    // 4. Position assignment based on direction with calculated gaps
+    assign_coordinates_with_gaps(graph, &layers, h_gap, v_gap);
+
+    // 5. Compute subgraph bounding boxes
     compute_subgraph_bounds(graph);
+}
+
+/// Calculate adaptive gaps based on available width
+fn calculate_gaps(
+    graph: &Graph,
+    layers: &HashMap<NodeId, usize>,
+    max_width: Option<usize>,
+) -> (usize, usize) {
+    let max_width = match max_width {
+        Some(w) => w,
+        None => return (DEFAULT_HORIZONTAL_GAP, DEFAULT_VERTICAL_GAP),
+    };
+
+    // Group nodes by layer
+    let mut layers_map: HashMap<usize, Vec<&NodeId>> = HashMap::new();
+    let mut max_layer = 0;
+
+    for (id, &layer) in layers {
+        layers_map.entry(layer).or_default().push(id);
+        max_layer = max_layer.max(layer);
+    }
+
+    // Calculate natural width with default gaps (for horizontal layouts)
+    if graph.direction.is_horizontal() {
+        let mut total_width = 0;
+        for l in 0..=max_layer {
+            let nodes_in_layer = layers_map.get(&l).map(|v| v.as_slice()).unwrap_or(&[]);
+            let layer_max_width = nodes_in_layer
+                .iter()
+                .filter_map(|id| graph.nodes.get(*id))
+                .map(|n| n.width)
+                .max()
+                .unwrap_or(0);
+            total_width += layer_max_width;
+        }
+        total_width += max_layer * DEFAULT_HORIZONTAL_GAP;
+
+        // If natural width exceeds max_width, reduce horizontal gap
+        if total_width > max_width && max_layer > 0 {
+            let node_width = total_width - max_layer * DEFAULT_HORIZONTAL_GAP;
+            let available_for_gaps = max_width.saturating_sub(node_width);
+            let new_gap = (available_for_gaps / max_layer).max(MIN_GAP);
+            return (new_gap, DEFAULT_VERTICAL_GAP);
+        }
+    }
+
+    (DEFAULT_HORIZONTAL_GAP, DEFAULT_VERTICAL_GAP)
 }
 
 /// Compute bounding boxes for all subgraphs
@@ -117,8 +173,13 @@ fn assign_layers(graph: &Graph) -> HashMap<NodeId, usize> {
     node_layers
 }
 
-/// Assign x,y coordinates based on layers and direction
-fn assign_coordinates(graph: &mut Graph, node_layers: &HashMap<NodeId, usize>) {
+/// Assign x,y coordinates based on layers and direction with configurable gaps
+fn assign_coordinates_with_gaps(
+    graph: &mut Graph,
+    node_layers: &HashMap<NodeId, usize>,
+    h_gap: usize,
+    v_gap: usize,
+) {
     let direction = graph.direction;
 
     // Group nodes by layer
@@ -145,16 +206,16 @@ fn assign_coordinates(graph: &mut Graph, node_layers: &HashMap<NodeId, usize>) {
             if let Some(node) = graph.nodes.get(id) {
                 max_w = max_w.max(node.width);
                 max_h = max_h.max(node.height);
-                total_w += node.width + HORIZONTAL_GAP;
-                total_h += node.height + VERTICAL_GAP;
+                total_w += node.width + h_gap;
+                total_h += node.height + v_gap;
             }
         }
 
         if direction.is_horizontal() {
             layer_widths.insert(l, max_w);
-            layer_heights.insert(l, total_h.saturating_sub(VERTICAL_GAP));
+            layer_heights.insert(l, total_h.saturating_sub(v_gap));
         } else {
-            layer_widths.insert(l, total_w.saturating_sub(HORIZONTAL_GAP));
+            layer_widths.insert(l, total_w.saturating_sub(h_gap));
             layer_heights.insert(l, max_h);
         }
     }
@@ -179,11 +240,11 @@ fn assign_coordinates(graph: &mut Graph, node_layers: &HashMap<NodeId, usize>) {
                 if let Some(node) = graph.nodes.get_mut(&id) {
                     node.x = current_x;
                     node.y = start_y;
-                    start_y += node.height + VERTICAL_GAP;
+                    start_y += node.height + v_gap;
                 }
             }
 
-            current_x += layer_widths.get(&layer_idx).unwrap_or(&0) + HORIZONTAL_GAP;
+            current_x += layer_widths.get(&layer_idx).unwrap_or(&0) + h_gap;
         }
     } else {
         let mut current_y = 0;
@@ -202,11 +263,11 @@ fn assign_coordinates(graph: &mut Graph, node_layers: &HashMap<NodeId, usize>) {
                 if let Some(node) = graph.nodes.get_mut(&id) {
                     node.x = start_x;
                     node.y = current_y;
-                    start_x += node.width + HORIZONTAL_GAP;
+                    start_x += node.width + h_gap;
                 }
             }
 
-            current_y += layer_heights.get(&layer_idx).unwrap_or(&0) + VERTICAL_GAP;
+            current_y += layer_heights.get(&layer_idx).unwrap_or(&0) + v_gap;
         }
     }
 }
