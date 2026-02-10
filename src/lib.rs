@@ -88,6 +88,19 @@ use renderer::render_graph;
 use seq_parser::{parse_sequence_diagram as parse_seq, render_sequence_diagram as render_seq};
 use state_parser::parse_state_diagram;
 
+/// Languages supported by graphs-tui.
+///
+/// Callers can use this instead of maintaining their own hardcoded lists.
+pub const SUPPORTED_LANGUAGES: &[&str] = &["mermaid", "d2"];
+
+/// Check if a language string is supported for rendering.
+///
+/// Matches `SUPPORTED_LANGUAGES` entries case-insensitively.
+pub fn is_supported(lang: &str) -> bool {
+    let lower = lang.to_lowercase();
+    SUPPORTED_LANGUAGES.iter().any(|&l| l == lower)
+}
+
 /// Diagram format
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DiagramFormat {
