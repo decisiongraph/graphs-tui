@@ -364,6 +364,89 @@ pub fn render_sequence_diagram(diagram: &SequenceDiagram, options: &RenderOption
             let from_x = positions[from_i];
             let to_x = positions[to_i];
 
+            // Self-message loop (same participant)
+            if from_i == to_i {
+                let loop_width = 4;
+                let (h_line, corner_tl, corner_tr, corner_bl, corner_br) = if options.ascii {
+                    ('-', '+', '+', '+', '+')
+                } else {
+                    ('─', '╭', '╮', '╰', '╯')
+                };
+
+                // Row 1: lifelines + top of loop
+                let mut line = vec![' '; total_width + loop_width + 2];
+                for &pos in &positions {
+                    if pos < line.len() {
+                        line[pos] = if options.ascii { '|' } else { '│' };
+                    }
+                }
+                // Draw top of loop: ╭──╮
+                if from_x + 1 < line.len() {
+                    line[from_x + 1] = corner_tl;
+                }
+                for i in 2..=loop_width {
+                    if from_x + i < line.len() {
+                        line[from_x + i] = h_line;
+                    }
+                }
+                if from_x + loop_width + 1 < line.len() {
+                    line[from_x + loop_width + 1] = corner_tr;
+                }
+                output.push_str(&line.iter().collect::<String>().trim_end());
+                output.push('\n');
+
+                // Row 2: lifelines + vertical sides
+                let mut line = vec![' '; total_width + loop_width + 2];
+                for &pos in &positions {
+                    if pos < line.len() {
+                        line[pos] = if options.ascii { '|' } else { '│' };
+                    }
+                }
+                if from_x + 1 < line.len() {
+                    line[from_x + 1] = if options.ascii { '|' } else { '│' };
+                }
+                if from_x + loop_width + 1 < line.len() {
+                    line[from_x + loop_width + 1] = if options.ascii { '|' } else { '│' };
+                }
+                output.push_str(&line.iter().collect::<String>().trim_end());
+                // Add label
+                if diagram.autonumber || !msg.label.is_empty() {
+                    output.push_str("  ");
+                    if diagram.autonumber {
+                        output.push_str(&format!("{}. ", msg_idx + 1));
+                    }
+                    output.push_str(&msg.label);
+                }
+                output.push('\n');
+
+                // Row 3: lifelines + bottom of loop with arrow
+                let mut line = vec![' '; total_width + loop_width + 2];
+                for &pos in &positions {
+                    if pos < line.len() {
+                        line[pos] = if options.ascii { '|' } else { '│' };
+                    }
+                }
+                if from_x + 1 < line.len() {
+                    line[from_x + 1] = corner_bl;
+                }
+                // Arrow pointing back
+                if from_x + 2 < line.len() {
+                    line[from_x + 2] = arrow_l;
+                }
+                for i in 3..=loop_width {
+                    if from_x + i < line.len() {
+                        line[from_x + i] = h_line;
+                    }
+                }
+                if from_x + loop_width + 1 < line.len() {
+                    line[from_x + loop_width + 1] = corner_br;
+                }
+                output.push_str(&line.iter().collect::<String>().trim_end());
+                output.push('\n');
+
+                continue;
+            }
+
             // Draw lifeline row with vertical lines at participant positions
             let mut line = vec![' '; total_width];
             for &pos in &positions {
@@ -550,5 +633,21 @@ mod tests {
         let output = render_sequence_diagram(&diagram, &RenderOptions::default());
         assert!(output.contains("1. Hello"));
         assert!(output.contains("2. Hi"));
+    }
+
+    #[test]
+    fn test_self_message_loop() {
+        let input = r#"sequenceDiagram
+    Alice->>Alice: Think
+"#;
+        let diagram = parse_sequence_diagram(input).unwrap();
+        assert_eq!(diagram.messages.len(), 1);
+        assert_eq!(diagram.messages[0].from, "Alice");
+        assert_eq!(diagram.messages[0].to, "Alice");
+
+        let output = render_sequence_diagram(&diagram, &RenderOptions::default());
+        assert!(output.contains("Think"));
+        // Should contain loop characters
+        assert!(output.contains("╭") || output.contains("+"));
     }
 }
