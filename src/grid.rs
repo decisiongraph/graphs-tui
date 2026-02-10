@@ -1,10 +1,21 @@
 use std::fmt;
 
+/// Line direction flags for junction merging
+#[derive(Clone, Copy, Default)]
+pub struct LineFlags {
+    pub up: bool,
+    pub down: bool,
+    pub left: bool,
+    pub right: bool,
+}
+
 /// 2D character grid for rendering
 pub struct Grid {
     cells: Vec<Vec<char>>,
     /// Cells that are protected from being overwritten by edges
     protected: Vec<Vec<bool>>,
+    /// Track line directions at each cell for junction merging
+    line_flags: Vec<Vec<LineFlags>>,
     pub width: usize,
     pub height: usize,
 }
@@ -15,6 +26,7 @@ impl Grid {
         Self {
             cells: vec![vec![' '; width]; height],
             protected: vec![vec![false; width]; height],
+            line_flags: vec![vec![LineFlags::default(); width]; height],
             width,
             height,
         }
@@ -53,6 +65,45 @@ impl Grid {
         false
     }
 
+    /// Set a line character with junction merging.
+    /// If the cell already has a line in a different direction, merge into a junction.
+    /// `is_horizontal` indicates if this is a horizontal line.
+    /// Returns true if the character was set.
+    pub fn set_line_with_merge(
+        &mut self,
+        x: usize,
+        y: usize,
+        c: char,
+        is_horizontal: bool,
+        chars: &JunctionChars,
+    ) -> bool {
+        if x >= self.width || y >= self.height || self.protected[y][x] {
+            return false;
+        }
+
+        // Update line flags
+        if is_horizontal {
+            self.line_flags[y][x].left = true;
+            self.line_flags[y][x].right = true;
+        } else {
+            self.line_flags[y][x].up = true;
+            self.line_flags[y][x].down = true;
+        }
+
+        // Compute merged character based on flags
+        let flags = &self.line_flags[y][x];
+        let has_h = flags.left || flags.right;
+        let has_v = flags.up || flags.down;
+
+        self.cells[y][x] = if has_h && has_v {
+            // Both horizontal and vertical - use cross
+            chars.cross
+        } else {
+            c
+        };
+        true
+    }
+
     /// Check if a cell is protected
     #[allow(dead_code)]
     pub fn is_protected(&self, x: usize, y: usize) -> bool {
@@ -72,6 +123,16 @@ impl Grid {
             None
         }
     }
+
+}
+
+/// Junction characters needed for line merging
+pub struct JunctionChars {
+    pub cross: char,  // ┼
+    pub t_up: char,   // ┴
+    pub t_down: char, // ┬
+    pub ml: char,     // ├
+    pub mr: char,     // ┤
 }
 
 impl fmt::Display for Grid {
@@ -150,5 +211,30 @@ mod tests {
         let written = grid.set_if_empty(1, 1, '─');
         assert!(written);
         assert_eq!(grid.get(1, 1), Some('─'));
+    }
+
+    #[test]
+    fn test_junction_merging() {
+        let mut grid = Grid::new(5, 5);
+        let jchars = JunctionChars {
+            cross: '┼',
+            t_up: '┴',
+            t_down: '┬',
+            ml: '├',
+            mr: '┤',
+        };
+
+        // Draw horizontal line through center
+        grid.set_line_with_merge(1, 2, '─', true, &jchars);
+        grid.set_line_with_merge(2, 2, '─', true, &jchars);
+        grid.set_line_with_merge(3, 2, '─', true, &jchars);
+
+        // Draw vertical line through center - should create cross at (2,2)
+        grid.set_line_with_merge(2, 1, '│', false, &jchars);
+        grid.set_line_with_merge(2, 2, '│', false, &jchars);
+        grid.set_line_with_merge(2, 3, '│', false, &jchars);
+
+        // The cell at (2,2) should be a cross since both horizontal and vertical pass through
+        assert_eq!(grid.get(2, 2), Some('┼'));
     }
 }
