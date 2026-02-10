@@ -42,6 +42,8 @@ pub struct SequenceDiagram {
     pub title: Option<String>,
     pub participants: Vec<Participant>,
     pub messages: Vec<Message>,
+    /// Whether to auto-number messages
+    pub autonumber: bool,
 }
 
 /// Parse sequence diagram syntax
@@ -70,11 +72,18 @@ pub fn parse_sequence_diagram(input: &str) -> Result<SequenceDiagram, MermaidErr
         title: None,
         participants: Vec::new(),
         messages: Vec::new(),
+        autonumber: false,
     };
 
     let mut seen_participants: std::collections::HashSet<String> = std::collections::HashSet::new();
 
     for line in lines.iter().skip(1) {
+        // Parse autonumber directive
+        if line.to_lowercase() == "autonumber" {
+            diagram.autonumber = true;
+            continue;
+        }
+
         // Parse title
         if line.to_lowercase().starts_with("title") {
             let title_text = line
@@ -340,7 +349,7 @@ pub fn render_sequence_diagram(diagram: &SequenceDiagram, options: &RenderOption
     output.push('\n');
 
     // Draw vertical lines (lifelines) and messages
-    for msg in &diagram.messages {
+    for (msg_idx, msg) in diagram.messages.iter().enumerate() {
         // Find participant indices
         let from_idx = diagram
             .participants
@@ -418,9 +427,12 @@ pub fn render_sequence_diagram(diagram: &SequenceDiagram, options: &RenderOption
 
             output.push_str(&line.iter().collect::<String>());
 
-            // Add label
-            if !msg.label.is_empty() {
+            // Add label (with optional autonumber prefix)
+            if diagram.autonumber || !msg.label.is_empty() {
                 output.push_str("  ");
+                if diagram.autonumber {
+                    output.push_str(&format!("{}. ", msg_idx + 1));
+                }
                 output.push_str(&msg.label);
             }
             output.push('\n');
@@ -506,11 +518,37 @@ mod tests {
                 label: "Hello".to_string(),
                 style: ArrowStyle::Solid,
             }],
+            autonumber: false,
         };
         let output = render_sequence_diagram(&diagram, &RenderOptions::default());
         assert!(output.contains("Test"));
         assert!(output.contains("Alice"));
         assert!(output.contains("Bob"));
         assert!(output.contains("Hello"));
+    }
+
+    #[test]
+    fn test_parse_autonumber() {
+        let input = r#"sequenceDiagram
+    autonumber
+    Alice->>Bob: Hello
+    Bob->>Alice: Hi
+"#;
+        let diagram = parse_sequence_diagram(input).unwrap();
+        assert!(diagram.autonumber);
+        assert_eq!(diagram.messages.len(), 2);
+    }
+
+    #[test]
+    fn test_render_autonumber() {
+        let input = r#"sequenceDiagram
+    autonumber
+    Alice->>Bob: Hello
+    Bob->>Alice: Hi
+"#;
+        let diagram = parse_sequence_diagram(input).unwrap();
+        let output = render_sequence_diagram(&diagram, &RenderOptions::default());
+        assert!(output.contains("1. Hello"));
+        assert!(output.contains("2. Hi"));
     }
 }
