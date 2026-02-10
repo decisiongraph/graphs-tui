@@ -225,10 +225,7 @@ pub fn render_pie_chart(input: &str, options: RenderOptions) -> Result<RenderRes
 /// # Returns
 /// * `Ok(RenderResult)` - Rendered diagram with any warnings
 /// * `Err(MermaidError)` - Parse or layout error
-pub fn render_d2_to_tui(
-    input: &str,
-    options: RenderOptions,
-) -> Result<RenderResult, MermaidError> {
+pub fn render_d2_to_tui(input: &str, options: RenderOptions) -> Result<RenderResult, MermaidError> {
     let mut graph = parse_d2(input)?;
     let warnings = compute_layout_with_options(&mut graph, &options);
     Ok(RenderResult {

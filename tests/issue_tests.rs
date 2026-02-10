@@ -10,7 +10,10 @@ A --> B
 B --> C
 C --> A"#;
     let result = render_mermaid_to_tui(input, RenderOptions::default()).unwrap();
-    assert!(!result.warnings.is_empty(), "Cycle should produce a warning");
+    assert!(
+        !result.warnings.is_empty(),
+        "Cycle should produce a warning"
+    );
     assert!(
         result.warnings[0].contains("Cycle"),
         "Warning should mention cycle"

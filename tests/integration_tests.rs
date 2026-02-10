@@ -196,7 +196,11 @@ Worker -->|notify| Email[Email]"#;
     assert!(result.output.contains("Database"));
 
     // Verify some edge labels are rendered (not all may fit in tight spaces)
-    assert!(result.output.contains("HTTPS") || result.output.contains("static") || result.output.contains("route"));
+    assert!(
+        result.output.contains("HTTPS")
+            || result.output.contains("static")
+            || result.output.contains("route")
+    );
 
     println!("Web Architecture with edge labels:\n{}", result.output);
 }
