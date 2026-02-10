@@ -1,5 +1,7 @@
 use crate::grid::Grid;
-use crate::types::{Direction, Edge, EdgeStyle, Graph, Node, NodeShape, RenderOptions, Subgraph};
+use crate::types::{
+    DiagramWarning, Direction, Edge, EdgeStyle, Graph, Node, NodeShape, RenderOptions, Subgraph,
+};
 
 /// Unicode box-drawing characters
 struct CharSet {
@@ -80,8 +82,16 @@ const ASCII_CHARS: CharSet = CharSet {
     dbr: '#',
 };
 
+/// A label that couldn't be rendered inline on an edge
+struct DroppedLabel {
+    marker: String,
+    label: String,
+    from: String,
+    to: String,
+}
+
 /// Render the graph to a string
-pub fn render_graph(graph: &Graph, options: &RenderOptions) -> String {
+pub fn render_graph(graph: &Graph, options: &RenderOptions, warnings: &mut Vec<DiagramWarning>) -> String {
     let chars = if options.ascii {
         &ASCII_CHARS
     } else {
@@ -91,7 +101,12 @@ pub fn render_graph(graph: &Graph, options: &RenderOptions) -> String {
     // Find grid bounds
     let mut max_x = 0;
     let mut max_y = 0;
-    for node in graph.nodes.values() {
+
+    // Sort nodes by id for deterministic rendering order
+    let mut sorted_nodes: Vec<&Node> = graph.nodes.values().collect();
+    sorted_nodes.sort_by(|a, b| a.id.cmp(&b.id));
+
+    for node in &sorted_nodes {
         max_x = max_x.max(node.x + node.width);
         max_y = max_y.max(node.y + node.height);
     }
@@ -109,12 +124,15 @@ pub fn render_graph(graph: &Graph, options: &RenderOptions) -> String {
         protect_subgraph_borders(&mut grid, sg);
     }
 
-    // 2. Render nodes (set_if_empty respects subgraph protection, then protect node area)
-    for node in graph.nodes.values() {
+    // 2. Render nodes in deterministic order
+    for node in &sorted_nodes {
         draw_node(&mut grid, node, chars);
     }
 
-    // 3. Render edges
+    // 3. Render edges, tracking dropped labels
+    let mut dropped_labels: Vec<DroppedLabel> = Vec::new();
+    let mut next_marker: usize = 1;
+
     for edge in &graph.edges {
         if let (Some(from), Some(to)) = (graph.nodes.get(&edge.from), graph.nodes.get(&edge.to)) {
             draw_edge(
@@ -125,21 +143,21 @@ pub fn render_graph(graph: &Graph, options: &RenderOptions) -> String {
                 chars,
                 graph.direction,
                 options.ascii,
+                &mut dropped_labels,
+                &mut next_marker,
             );
         }
     }
 
     let output = grid.to_string();
 
-    // Apply max_width constraint if set
-    // Use chars().count() for visual width, not len() which counts bytes
-    if let Some(max_width) = options.max_width {
+    // Apply max_width constraint if set (only to grid lines, not legend)
+    let output = if let Some(max_width) = options.max_width {
         output
             .lines()
             .map(|line| {
                 let char_count = line.chars().count();
                 if char_count > max_width {
-                    // Truncate and add ellipsis indicator
                     let mut truncated: String =
                         line.chars().take(max_width.saturating_sub(1)).collect();
                     truncated.push('…');
@@ -150,6 +168,24 @@ pub fn render_graph(graph: &Graph, options: &RenderOptions) -> String {
             })
             .collect::<Vec<_>>()
             .join("\n")
+    } else {
+        output
+    };
+
+    // Append legend for dropped labels
+    if !dropped_labels.is_empty() {
+        let mut result = output;
+        result.push_str("\n\nLabels:");
+        for dl in &dropped_labels {
+            result.push_str(&format!("\n  {} {}", dl.marker, dl.label));
+            warnings.push(DiagramWarning::LabelDropped {
+                marker: dl.marker.clone(),
+                edge_from: dl.from.clone(),
+                edge_to: dl.to.clone(),
+                label: dl.label.clone(),
+            });
+        }
+        result
     } else {
         output
     }
@@ -667,6 +703,8 @@ fn draw_edge(
     chars: &CharSet,
     direction: Direction,
     ascii: bool,
+    dropped_labels: &mut Vec<DroppedLabel>,
+    next_marker: &mut usize,
 ) {
     let has_arrow = style_has_arrow(edge.style);
     let (h_char, v_char) = get_edge_chars(edge.style, chars, ascii);
@@ -715,6 +753,10 @@ fn draw_edge(
             direction,
             edge.label.as_deref(),
             chars,
+            &edge.from,
+            &edge.to,
+            dropped_labels,
+            next_marker,
         );
     } else {
         draw_vertical_edge(
@@ -729,6 +771,10 @@ fn draw_edge(
             direction,
             edge.label.as_deref(),
             chars,
+            &edge.from,
+            &edge.to,
+            dropped_labels,
+            next_marker,
         );
     }
 }
@@ -746,6 +792,10 @@ fn draw_horizontal_edge(
     direction: Direction,
     label: Option<&str>,
     chars: &CharSet,
+    from_id: &str,
+    to_id: &str,
+    dropped_labels: &mut Vec<DroppedLabel>,
+    next_marker: &mut usize,
 ) {
     if start_y == end_y {
         // Straight horizontal line
@@ -772,6 +822,22 @@ fn draw_horizontal_edge(
                 for (i, c) in lbl.chars().enumerate() {
                     grid.set_if_empty(label_x + i, start_y, c);
                 }
+            } else {
+                // Label doesn't fit — try rendering marker, record for legend
+                let marker_text = format!("[{}]", *next_marker);
+                if edge_len > marker_text.len() + 2 {
+                    let marker_x = from_x + (edge_len - marker_text.len()) / 2;
+                    for (i, c) in marker_text.chars().enumerate() {
+                        grid.set_if_empty(marker_x + i, start_y, c);
+                    }
+                }
+                dropped_labels.push(DroppedLabel {
+                    marker: marker_text,
+                    label: lbl.to_string(),
+                    from: from_id.to_string(),
+                    to: to_id.to_string(),
+                });
+                *next_marker += 1;
             }
         }
     } else {
@@ -824,6 +890,16 @@ fn draw_horizontal_edge(
                 for (i, c) in lbl.chars().enumerate() {
                     grid.set_if_empty(mid_x + 1 + i, label_y, c);
                 }
+            } else {
+                // Vertical segment too short for label
+                let marker_text = format!("[{}]", *next_marker);
+                dropped_labels.push(DroppedLabel {
+                    marker: marker_text,
+                    label: lbl.to_string(),
+                    from: from_id.to_string(),
+                    to: to_id.to_string(),
+                });
+                *next_marker += 1;
             }
         }
 
@@ -875,6 +951,10 @@ fn draw_vertical_edge(
     direction: Direction,
     label: Option<&str>,
     chars: &CharSet,
+    from_id: &str,
+    to_id: &str,
+    dropped_labels: &mut Vec<DroppedLabel>,
+    next_marker: &mut usize,
 ) {
     if start_x == end_x {
         // Straight vertical line
@@ -901,6 +981,16 @@ fn draw_vertical_edge(
                 for (i, c) in lbl.chars().enumerate() {
                     grid.set_if_empty(start_x + 1 + i, label_y, c);
                 }
+            } else {
+                // Edge too short for label
+                let marker_text = format!("[{}]", *next_marker);
+                dropped_labels.push(DroppedLabel {
+                    marker: marker_text,
+                    label: lbl.to_string(),
+                    from: from_id.to_string(),
+                    to: to_id.to_string(),
+                });
+                *next_marker += 1;
             }
         }
     } else {
@@ -952,6 +1042,22 @@ fn draw_vertical_edge(
                 for (i, c) in lbl.chars().enumerate() {
                     grid.set_if_empty(label_x + i, mid_y, c);
                 }
+            } else {
+                // Label doesn't fit on horizontal segment
+                let marker_text = format!("[{}]", *next_marker);
+                if horiz_len > marker_text.len() + 2 {
+                    let marker_x = from_x + (horiz_len - marker_text.len()) / 2;
+                    for (i, c) in marker_text.chars().enumerate() {
+                        grid.set_if_empty(marker_x + i, mid_y, c);
+                    }
+                }
+                dropped_labels.push(DroppedLabel {
+                    marker: marker_text,
+                    label: lbl.to_string(),
+                    from: from_id.to_string(),
+                    to: to_id.to_string(),
+                });
+                *next_marker += 1;
             }
         }
 
@@ -1000,7 +1106,8 @@ mod tests {
     fn test_render_lr() {
         let mut graph = parse_mermaid("flowchart LR\nA[Start] --> B[End]").unwrap();
         compute_layout(&mut graph);
-        let output = render_graph(&graph, &RenderOptions::default());
+        let mut warnings = Vec::new();
+        let output = render_graph(&graph, &RenderOptions::default(), &mut warnings);
         assert!(output.contains("Start"));
         assert!(output.contains("End"));
         assert!(output.contains("▶"));
@@ -1010,7 +1117,8 @@ mod tests {
     fn test_render_tb() {
         let mut graph = parse_mermaid("flowchart TB\nA[Start] --> B[End]").unwrap();
         compute_layout(&mut graph);
-        let output = render_graph(&graph, &RenderOptions::default());
+        let mut warnings = Vec::new();
+        let output = render_graph(&graph, &RenderOptions::default(), &mut warnings);
         assert!(output.contains("Start"));
         assert!(output.contains("End"));
         assert!(output.contains("▼"));
@@ -1020,12 +1128,14 @@ mod tests {
     fn test_render_ascii() {
         let mut graph = parse_mermaid("flowchart LR\nA --> B").unwrap();
         compute_layout(&mut graph);
+        let mut warnings = Vec::new();
         let output = render_graph(
             &graph,
             &RenderOptions {
                 ascii: true,
                 max_width: None,
             },
+            &mut warnings,
         );
         assert!(output.contains("+---+"));
         assert!(output.contains(">"));
@@ -1036,7 +1146,8 @@ mod tests {
     fn test_render_rl() {
         let mut graph = parse_mermaid("flowchart RL\nA --> B").unwrap();
         compute_layout(&mut graph);
-        let output = render_graph(&graph, &RenderOptions::default());
+        let mut warnings = Vec::new();
+        let output = render_graph(&graph, &RenderOptions::default(), &mut warnings);
         assert!(output.contains("◀"));
     }
 
@@ -1044,7 +1155,8 @@ mod tests {
     fn test_render_bt() {
         let mut graph = parse_mermaid("flowchart BT\nA --> B").unwrap();
         compute_layout(&mut graph);
-        let output = render_graph(&graph, &RenderOptions::default());
+        let mut warnings = Vec::new();
+        let output = render_graph(&graph, &RenderOptions::default(), &mut warnings);
         assert!(output.contains("▲"));
     }
 
@@ -1052,7 +1164,8 @@ mod tests {
     fn test_render_rounded() {
         let mut graph = parse_mermaid("flowchart LR\nA(Rounded)").unwrap();
         compute_layout(&mut graph);
-        let output = render_graph(&graph, &RenderOptions::default());
+        let mut warnings = Vec::new();
+        let output = render_graph(&graph, &RenderOptions::default(), &mut warnings);
         assert!(output.contains("Rounded"));
         assert!(output.contains("╭")); // Rounded corner
     }
@@ -1061,7 +1174,8 @@ mod tests {
     fn test_render_circle() {
         let mut graph = parse_mermaid("flowchart LR\nA((Circle))").unwrap();
         compute_layout(&mut graph);
-        let output = render_graph(&graph, &RenderOptions::default());
+        let mut warnings = Vec::new();
+        let output = render_graph(&graph, &RenderOptions::default(), &mut warnings);
         assert!(output.contains("Circle"));
         assert!(output.contains("(")); // Circle sides
     }
@@ -1070,7 +1184,8 @@ mod tests {
     fn test_render_diamond() {
         let mut graph = parse_mermaid("flowchart LR\nA{Decision}").unwrap();
         compute_layout(&mut graph);
-        let output = render_graph(&graph, &RenderOptions::default());
+        let mut warnings = Vec::new();
+        let output = render_graph(&graph, &RenderOptions::default(), &mut warnings);
         assert!(output.contains("Decision"));
         assert!(output.contains("<")); // Diamond sides
     }
@@ -1079,7 +1194,8 @@ mod tests {
     fn test_render_cylinder() {
         let mut graph = parse_mermaid("flowchart LR\nDB[(Database)]").unwrap();
         compute_layout(&mut graph);
-        let output = render_graph(&graph, &RenderOptions::default());
+        let mut warnings = Vec::new();
+        let output = render_graph(&graph, &RenderOptions::default(), &mut warnings);
         assert!(output.contains("Database"));
     }
 
@@ -1087,12 +1203,14 @@ mod tests {
     fn test_render_max_width() {
         let mut graph = parse_mermaid("flowchart LR\nA[Start] --> B[End]").unwrap();
         compute_layout(&mut graph);
+        let mut warnings = Vec::new();
         let output = render_graph(
             &graph,
             &RenderOptions {
                 ascii: false,
                 max_width: Some(20),
             },
+            &mut warnings,
         );
         // All lines should be truncated to max_width
         for line in output.lines() {
@@ -1110,12 +1228,14 @@ mod tests {
     fn test_render_max_width_no_truncation() {
         let mut graph = parse_mermaid("flowchart LR\nA --> B").unwrap();
         compute_layout(&mut graph);
+        let mut warnings = Vec::new();
         let output = render_graph(
             &graph,
             &RenderOptions {
                 ascii: false,
                 max_width: Some(100), // Wide enough to not truncate
             },
+            &mut warnings,
         );
         // Should not contain ellipsis when no truncation needed
         assert!(!output.contains('…'));

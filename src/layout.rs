@@ -1,4 +1,4 @@
-use crate::types::{Direction, Graph, NodeId, NodeShape, RenderOptions};
+use crate::types::{DiagramWarning, Direction, Graph, NodeId, NodeShape, RenderOptions};
 use std::collections::{HashMap, VecDeque};
 
 const MIN_NODE_WIDTH: usize = 5;
@@ -12,14 +12,14 @@ const SUBGRAPH_PADDING: usize = 2;
 /// Compute layout for all nodes in the graph
 ///
 /// Returns a list of warnings (e.g., cycle detected).
-pub fn compute_layout(graph: &mut Graph) -> Vec<String> {
+pub fn compute_layout(graph: &mut Graph) -> Vec<DiagramWarning> {
     compute_layout_with_options(graph, &RenderOptions::default())
 }
 
 /// Compute layout for all nodes with render options (considers max_width)
 ///
 /// Returns a list of warnings (e.g., cycle detected).
-pub fn compute_layout_with_options(graph: &mut Graph, options: &RenderOptions) -> Vec<String> {
+pub fn compute_layout_with_options(graph: &mut Graph, options: &RenderOptions) -> Vec<DiagramWarning> {
     let mut warnings = Vec::new();
 
     // 1. Compute node sizes (use chars().count() for proper Unicode handling)
@@ -57,13 +57,16 @@ fn calculate_gaps(
         None => return (DEFAULT_HORIZONTAL_GAP, DEFAULT_VERTICAL_GAP),
     };
 
-    // Group nodes by layer
+    // Group nodes by layer (sorted for determinism)
     let mut layers_map: HashMap<usize, Vec<&NodeId>> = HashMap::new();
     let mut max_layer = 0;
 
     for (id, &layer) in layers {
         layers_map.entry(layer).or_default().push(id);
         max_layer = max_layer.max(layer);
+    }
+    for nodes in layers_map.values_mut() {
+        nodes.sort();
     }
 
     // Calculate natural width with default gaps (for horizontal layouts)
@@ -125,7 +128,7 @@ fn compute_subgraph_bounds(graph: &mut Graph) {
 }
 
 /// Assign layer numbers using Kahn's algorithm
-fn assign_layers(graph: &Graph, warnings: &mut Vec<String>) -> HashMap<NodeId, usize> {
+fn assign_layers(graph: &Graph, warnings: &mut Vec<DiagramWarning>) -> HashMap<NodeId, usize> {
     let mut node_layers: HashMap<NodeId, usize> = HashMap::new();
     let mut in_degree: HashMap<NodeId, usize> = HashMap::new();
 
@@ -140,25 +143,30 @@ fn assign_layers(graph: &Graph, warnings: &mut Vec<String>) -> HashMap<NodeId, u
         *in_degree.entry(edge.to.clone()).or_insert(0) += 1;
     }
 
-    // Start with nodes that have no incoming edges
+    // Start with nodes that have no incoming edges (sorted for determinism)
     let mut queue: VecDeque<NodeId> = VecDeque::new();
-    for (id, &degree) in &in_degree {
-        if degree == 0 {
-            queue.push_back(id.clone());
-        }
+    let mut zero_in: Vec<&NodeId> = in_degree
+        .iter()
+        .filter(|(_, &deg)| deg == 0)
+        .map(|(id, _)| id)
+        .collect();
+    zero_in.sort();
+    for id in zero_in {
+        queue.push_back(id.clone());
     }
 
     let mut processed = 0;
     while let Some(u) = queue.pop_front() {
         processed += 1;
 
-        // Find all neighbors (nodes that u points to)
-        let neighbors: Vec<NodeId> = graph
+        // Find all neighbors (nodes that u points to), sorted for determinism
+        let mut neighbors: Vec<NodeId> = graph
             .edges
             .iter()
             .filter(|e| e.from == u)
             .map(|e| e.to.clone())
             .collect();
+        neighbors.sort();
 
         for v in neighbors {
             // Update layer to be at least one more than predecessor
@@ -176,9 +184,15 @@ fn assign_layers(graph: &Graph, warnings: &mut Vec<String>) -> HashMap<NodeId, u
         }
     }
 
-    // Check for cycles
+    // Check for cycles — collect unprocessed node names
     if processed < graph.nodes.len() {
-        warnings.push("Cycle detected in graph. Layout may be imperfect.".to_string());
+        let mut cycle_nodes: Vec<String> = in_degree
+            .iter()
+            .filter(|(_, &deg)| deg > 0)
+            .map(|(id, _)| id.clone())
+            .collect();
+        cycle_nodes.sort();
+        warnings.push(DiagramWarning::CycleDetected { nodes: cycle_nodes });
     }
 
     node_layers
@@ -193,13 +207,16 @@ fn assign_coordinates_with_gaps(
 ) {
     let direction = graph.direction;
 
-    // Group nodes by layer
+    // Group nodes by layer, sort within each layer for determinism
     let mut layers_map: HashMap<usize, Vec<NodeId>> = HashMap::new();
     let mut max_layer = 0;
 
     for (id, &layer) in node_layers {
         layers_map.entry(layer).or_default().push(id.clone());
         max_layer = max_layer.max(layer);
+    }
+    for nodes in layers_map.values_mut() {
+        nodes.sort();
     }
 
     // Calculate layer dimensions
@@ -327,7 +344,7 @@ mod tests {
         let mut graph = parse_mermaid("flowchart LR\nA --> B\nB --> C\nC --> A").unwrap();
         let warnings = compute_layout(&mut graph);
         assert_eq!(warnings.len(), 1);
-        assert!(warnings[0].contains("Cycle"));
+        assert!(warnings[0].to_string().contains("Cycle"));
     }
 
     #[test]

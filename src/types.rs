@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::fmt;
 
 /// Node identifier type
 pub type NodeId = String;
@@ -192,11 +193,47 @@ pub struct RenderOptions {
     pub max_width: Option<usize>,
 }
 
+/// Structured warning emitted during layout or rendering
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum DiagramWarning {
+    /// A cycle was detected involving the listed nodes
+    CycleDetected { nodes: Vec<String> },
+    /// An edge label was too long to render inline and was moved to a legend
+    LabelDropped {
+        marker: String,
+        edge_from: String,
+        edge_to: String,
+        label: String,
+    },
+}
+
+impl fmt::Display for DiagramWarning {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            DiagramWarning::CycleDetected { nodes } => {
+                write!(f, "Cycle detected involving nodes: {}", nodes.join(", "))
+            }
+            DiagramWarning::LabelDropped {
+                marker,
+                edge_from,
+                edge_to,
+                label,
+            } => {
+                write!(
+                    f,
+                    "Label '{}' on edge {} -> {} moved to legend as {}",
+                    label, edge_from, edge_to, marker
+                )
+            }
+        }
+    }
+}
+
 /// Result of rendering a diagram
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RenderResult {
     /// The rendered diagram output
     pub output: String,
-    /// Warnings generated during rendering (e.g., cycle detected)
-    pub warnings: Vec<String>,
+    /// Warnings generated during layout/rendering
+    pub warnings: Vec<DiagramWarning>,
 }
