@@ -1,7 +1,7 @@
 //! Tests for GitHub issues
 use graphs_tui::{
-    is_supported, render, render_d2_to_tui, render_mermaid_to_tui, DiagramWarning, RenderOptions,
-    SUPPORTED_LANGUAGES,
+    check, is_supported, render, render_d2_to_tui, render_mermaid_to_tui, DiagramWarning,
+    RenderOptions, SUPPORTED_LANGUAGES,
 };
 
 /// Issue #7: Warnings returned in RenderResult instead of eprintln
@@ -354,4 +354,52 @@ fn test_issue_11_render_case_insensitive() {
     let result = render("D2", "X -> Y", RenderOptions::default()).unwrap();
     assert!(result.output.contains("X"));
     assert!(result.output.contains("Y"));
+}
+
+// ── Issue #13: Validate-only check() ─────────────────────────────────
+
+/// Issue #13: check detects cycle without rendering
+#[test]
+fn test_issue_13_check_cycle() {
+    let warnings = check("mermaid", "flowchart LR\nA --> B\nB --> A").unwrap();
+    assert!(!warnings.is_empty(), "Should detect cycle");
+    assert!(
+        matches!(&warnings[0], DiagramWarning::CycleDetected { .. }),
+        "Should be CycleDetected"
+    );
+}
+
+/// Issue #13: check returns empty for valid acyclic graph
+#[test]
+fn test_issue_13_check_no_warnings() {
+    let warnings = check("mermaid", "flowchart LR\nA --> B --> C").unwrap();
+    assert!(warnings.is_empty());
+}
+
+/// Issue #13: check works with D2
+#[test]
+fn test_issue_13_check_d2_cycle() {
+    let warnings = check("d2", "A -> B\nB -> A").unwrap();
+    assert!(!warnings.is_empty());
+}
+
+/// Issue #13: check validates pie chart parse errors
+#[test]
+fn test_issue_13_check_pie_valid() {
+    let warnings = check("mermaid", "pie\n    \"A\" : 50\n    \"B\" : 50").unwrap();
+    assert!(warnings.is_empty());
+}
+
+/// Issue #13: check validates sequence diagram parse
+#[test]
+fn test_issue_13_check_sequence_valid() {
+    let warnings = check("mermaid", "sequenceDiagram\n    A->>B: Hi").unwrap();
+    assert!(warnings.is_empty());
+}
+
+/// Issue #13: check returns Err on invalid input
+#[test]
+fn test_issue_13_check_invalid() {
+    let result = check("mermaid", "flowchart\n");
+    assert!(result.is_err(), "Should fail on invalid input");
 }

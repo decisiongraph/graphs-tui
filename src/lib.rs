@@ -173,6 +173,61 @@ pub fn render(
     }
 }
 
+/// Validate diagram without rendering output.
+///
+/// Parses the input and runs layout (for cycle detection) but skips the
+/// expensive grid rendering. Use this for validation-only workflows.
+///
+/// **Note:** This only catches structural warnings (e.g. cycles). Width-dependent
+/// warnings like `LabelDropped` depend on `max_width` which is only applied during
+/// rendering — use `render()` if you need those.
+///
+/// Dispatches by `lang`: `"d2"` → D2 parser, anything else → Mermaid auto-detect.
+///
+/// # Example
+/// ```
+/// use graphs_tui::check;
+///
+/// let warnings = check("mermaid", "flowchart LR\nA --> B\nB --> A").unwrap();
+/// assert!(!warnings.is_empty()); // cycle detected
+/// ```
+pub fn check(lang: &str, code: &str) -> Result<Vec<DiagramWarning>, MermaidError> {
+    match lang.to_lowercase().as_str() {
+        "d2" => {
+            let mut graph = parse_d2(code)?;
+            Ok(compute_layout(&mut graph))
+        }
+        _ => check_mermaid(code),
+    }
+}
+
+/// Validate mermaid input (auto-detect subformat) without rendering.
+fn check_mermaid(code: &str) -> Result<Vec<DiagramWarning>, MermaidError> {
+    let format = detect_format(code);
+    match format {
+        DiagramFormat::D2 => {
+            let mut graph = parse_d2(code)?;
+            Ok(compute_layout(&mut graph))
+        }
+        DiagramFormat::Mermaid => {
+            let mut graph = parse_mermaid(code)?;
+            Ok(compute_layout(&mut graph))
+        }
+        DiagramFormat::StateDiagram => {
+            let mut graph = parse_state_diagram(code)?;
+            Ok(compute_layout(&mut graph))
+        }
+        DiagramFormat::SequenceDiagram => {
+            parse_seq(code)?;
+            Ok(Vec::new())
+        }
+        DiagramFormat::PieChart => {
+            parse_pie(code)?;
+            Ok(Vec::new())
+        }
+    }
+}
+
 /// Render diagram with auto-detection of format
 ///
 /// # Arguments
