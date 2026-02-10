@@ -66,6 +66,7 @@ impl PathGrid {
     }
 
     /// Unblock specific positions (for edge start/end points)
+    #[allow(dead_code)]
     pub fn unblock(&mut self, pos: Pos) {
         self.blocked.remove(&pos);
     }

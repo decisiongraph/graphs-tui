@@ -127,12 +127,13 @@ impl Grid {
 }
 
 /// Junction characters needed for line merging
+#[allow(dead_code)]
 pub struct JunctionChars {
     pub cross: char,  // ┼
-    pub t_up: char,   // ┴
-    pub t_down: char, // ┬
-    pub ml: char,     // ├
-    pub mr: char,     // ┤
+    pub t_up: char,   // ┴ (for future T-junction support)
+    pub t_down: char, // ┬ (for future T-junction support)
+    pub ml: char,     // ├ (for future T-junction support)
+    pub mr: char,     // ┤ (for future T-junction support)
 }
 
 impl fmt::Display for Grid {
