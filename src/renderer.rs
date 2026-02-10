@@ -179,7 +179,7 @@ pub fn render_graph(
     // Append legend for dropped labels
     if !dropped_labels.is_empty() {
         let mut result = output;
-        result.push_str("\n\nLabels:");
+        result.push_str("\nLabels:");
         for dl in &dropped_labels {
             result.push_str(&format!("\n  {} {}", dl.marker, dl.label));
             warnings.push(DiagramWarning::LabelDropped {
@@ -821,7 +821,7 @@ fn draw_horizontal_edge(
         // Draw label in the middle of the edge
         if let Some(lbl) = label {
             let edge_len = to_x.saturating_sub(from_x);
-            if edge_len > lbl.len() + 2 {
+            if edge_len >= lbl.len() {
                 let label_x = from_x + (edge_len - lbl.len()) / 2;
                 for (i, c) in lbl.chars().enumerate() {
                     grid.set_if_empty(label_x + i, start_y, c);
@@ -829,7 +829,7 @@ fn draw_horizontal_edge(
             } else {
                 // Label doesn't fit — try rendering marker, record for legend
                 let marker_text = format!("[{}]", *next_marker);
-                if edge_len > marker_text.len() + 2 {
+                if edge_len >= marker_text.len() {
                     let marker_x = from_x + (edge_len - marker_text.len()) / 2;
                     for (i, c) in marker_text.chars().enumerate() {
                         grid.set_if_empty(marker_x + i, start_y, c);
@@ -1038,30 +1038,39 @@ fn draw_vertical_edge(
             grid.set_if_empty(x, mid_y, h_char);
         }
 
-        // Draw label on horizontal segment
+        // Draw label — try horizontal segment first, fall back to vertical segment
         if let Some(lbl) = label {
             let horiz_len = to_x.saturating_sub(from_x);
-            if horiz_len > lbl.len() + 2 {
+            if horiz_len >= lbl.len() {
                 let label_x = from_x + (horiz_len - lbl.len()) / 2;
                 for (i, c) in lbl.chars().enumerate() {
                     grid.set_if_empty(label_x + i, mid_y, c);
                 }
             } else {
-                // Label doesn't fit on horizontal segment
-                let marker_text = format!("[{}]", *next_marker);
-                if horiz_len > marker_text.len() + 2 {
-                    let marker_x = from_x + (horiz_len - marker_text.len()) / 2;
-                    for (i, c) in marker_text.chars().enumerate() {
-                        grid.set_if_empty(marker_x + i, mid_y, c);
+                // Try placing label alongside the first vertical segment
+                let vert_len = mid_y.saturating_sub(start_y);
+                if vert_len > 0 {
+                    let label_y = start_y + vert_len / 2;
+                    for (i, c) in lbl.chars().enumerate() {
+                        grid.set_if_empty(start_x + 1 + i, label_y, c);
                     }
+                } else {
+                    // Label doesn't fit anywhere — drop to legend
+                    let marker_text = format!("[{}]", *next_marker);
+                    if horiz_len >= marker_text.len() {
+                        let marker_x = from_x + (horiz_len - marker_text.len()) / 2;
+                        for (i, c) in marker_text.chars().enumerate() {
+                            grid.set_if_empty(marker_x + i, mid_y, c);
+                        }
+                    }
+                    dropped_labels.push(DroppedLabel {
+                        marker: marker_text,
+                        label: lbl.to_string(),
+                        from: from_id.to_string(),
+                        to: to_id.to_string(),
+                    });
+                    *next_marker += 1;
                 }
-                dropped_labels.push(DroppedLabel {
-                    marker: marker_text,
-                    label: lbl.to_string(),
-                    from: from_id.to_string(),
-                    to: to_id.to_string(),
-                });
-                *next_marker += 1;
             }
         }
 
@@ -1212,14 +1221,14 @@ mod tests {
             &graph,
             &RenderOptions {
                 ascii: false,
-                max_width: Some(20),
+                max_width: Some(15),
             },
             &mut warnings,
         );
         // All lines should be truncated to max_width
         for line in output.lines() {
             assert!(
-                line.chars().count() <= 20,
+                line.chars().count() <= 15,
                 "Line exceeds max_width: {} chars",
                 line.chars().count()
             );

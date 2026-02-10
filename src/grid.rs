@@ -76,10 +76,18 @@ impl Grid {
 
 impl fmt::Display for Grid {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        for (i, row) in self.cells.iter().enumerate() {
+        // Find the last row that has non-space content
+        let last_non_empty = self
+            .cells
+            .iter()
+            .rposition(|row| row.iter().any(|&c| c != ' '))
+            .unwrap_or(0);
+
+        for (i, row) in self.cells[..=last_non_empty].iter().enumerate() {
             let line: String = row.iter().collect();
-            write!(f, "{}", line)?;
-            if i < self.cells.len() - 1 {
+            let trimmed = line.trim_end();
+            write!(f, "{}", trimmed)?;
+            if i < last_non_empty {
                 writeln!(f)?;
             }
         }
@@ -119,7 +127,7 @@ mod tests {
         grid.set(0, 0, 'A');
         grid.set(2, 1, 'B');
         let s = grid.to_string();
-        assert_eq!(s, "A  \n  B");
+        assert_eq!(s, "A\n  B");
     }
 
     #[test]

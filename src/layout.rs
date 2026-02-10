@@ -1,5 +1,5 @@
 use crate::types::{DiagramWarning, Direction, Graph, NodeId, NodeShape, RenderOptions};
-use std::collections::{HashMap, VecDeque};
+use std::collections::{HashMap, HashSet, VecDeque};
 
 const MIN_NODE_WIDTH: usize = 5;
 const NODE_HEIGHT: usize = 3;
@@ -130,10 +130,16 @@ fn compute_subgraph_bounds(graph: &mut Graph) {
     }
 }
 
-/// Assign layer numbers using Kahn's algorithm
+/// Assign layer numbers using Kahn's algorithm with cycle-breaking.
+///
+/// Standard Kahn's processes nodes with in_degree=0. When the queue empties
+/// but unprocessed nodes remain, a cycle exists. We force-process the stuck
+/// node that appears earliest as a "from" in the edge list (preserving the
+/// user's intended flow direction), then continue Kahn's.
 fn assign_layers(graph: &Graph, warnings: &mut Vec<DiagramWarning>) -> HashMap<NodeId, usize> {
     let mut node_layers: HashMap<NodeId, usize> = HashMap::new();
     let mut in_degree: HashMap<NodeId, usize> = HashMap::new();
+    let mut processed: HashSet<NodeId> = HashSet::new();
 
     // Initialize
     for id in graph.nodes.keys() {
@@ -144,6 +150,14 @@ fn assign_layers(graph: &Graph, warnings: &mut Vec<DiagramWarning>) -> HashMap<N
     // Count in-degrees
     for edge in &graph.edges {
         *in_degree.entry(edge.to.clone()).or_insert(0) += 1;
+    }
+
+    // Build first-appearance-as-from index for deterministic cycle breaking.
+    // Nodes that appear earlier as edge sources are treated as more "source-like"
+    // when breaking cycles.
+    let mut first_from_idx: HashMap<&str, usize> = HashMap::new();
+    for (i, edge) in graph.edges.iter().enumerate() {
+        first_from_idx.entry(edge.from.as_str()).or_insert(i);
     }
 
     // Start with nodes that have no incoming edges (sorted for determinism)
@@ -158,45 +172,80 @@ fn assign_layers(graph: &Graph, warnings: &mut Vec<DiagramWarning>) -> HashMap<N
         queue.push_back(id.clone());
     }
 
-    let mut processed = 0;
-    while let Some(u) = queue.pop_front() {
-        processed += 1;
+    let total = graph.nodes.len();
+    let mut all_cycle_nodes: HashSet<String> = HashSet::new();
 
-        // Find all neighbors (nodes that u points to), sorted for determinism
-        let mut neighbors: Vec<NodeId> = graph
-            .edges
-            .iter()
-            .filter(|e| e.from == u)
-            .map(|e| e.to.clone())
-            .collect();
-        neighbors.sort();
+    loop {
+        // Standard Kahn's processing
+        while let Some(u) = queue.pop_front() {
+            if processed.contains(&u) {
+                continue;
+            }
+            processed.insert(u.clone());
 
-        for v in neighbors {
-            // Update layer to be at least one more than predecessor
-            let u_layer = *node_layers.get(&u).unwrap_or(&0);
-            let v_layer = node_layers.entry(v.clone()).or_insert(0);
-            *v_layer = (*v_layer).max(u_layer + 1);
+            // Find neighbors, skipping already-processed nodes
+            let mut neighbors: Vec<NodeId> = graph
+                .edges
+                .iter()
+                .filter(|e| e.from == u && !processed.contains(&e.to))
+                .map(|e| e.to.clone())
+                .collect();
+            neighbors.sort();
+            neighbors.dedup();
 
-            // Decrement in-degree
-            if let Some(deg) = in_degree.get_mut(&v) {
-                *deg -= 1;
-                if *deg == 0 {
-                    queue.push_back(v);
+            for v in &neighbors {
+                let u_layer = *node_layers.get(&u).unwrap_or(&0);
+                let v_layer = node_layers.entry(v.clone()).or_insert(0);
+                *v_layer = (*v_layer).max(u_layer + 1);
+
+                if let Some(deg) = in_degree.get_mut(v) {
+                    *deg = deg.saturating_sub(1);
+                    if *deg == 0 {
+                        queue.push_back(v.clone());
+                    }
                 }
             }
         }
-    }
 
-    // Check for cycles — collect unprocessed node names.
-    // Note: deg > 0 catches nodes in cycles AND nodes downstream of cycles
-    // (their in-degree never reaches 0). Being over-inclusive is acceptable
-    // for the warning message.
-    if processed < graph.nodes.len() {
-        let mut cycle_nodes: Vec<String> = in_degree
+        if processed.len() >= total {
+            break;
+        }
+
+        // Cycle detected — collect stuck nodes
+        let mut stuck: Vec<NodeId> = in_degree
             .iter()
-            .filter(|(_, &deg)| deg > 0)
+            .filter(|(id, _)| !processed.contains(*id))
             .map(|(id, _)| id.clone())
             .collect();
+
+        // Record only nodes that have outgoing edges to other stuck nodes
+        // (actual cycle participants, not just downstream nodes)
+        let stuck_set: HashSet<&str> = stuck.iter().map(|s| s.as_str()).collect();
+        for n in &stuck {
+            let has_outgoing_to_stuck = graph
+                .edges
+                .iter()
+                .any(|e| e.from == *n && stuck_set.contains(e.to.as_str()));
+            if has_outgoing_to_stuck {
+                all_cycle_nodes.insert(n.clone());
+            }
+        }
+
+        // Force-process the stuck node that appears earliest as an edge source
+        stuck.sort_by(|a, b| {
+            let fa = first_from_idx.get(a.as_str()).copied().unwrap_or(usize::MAX);
+            let fb = first_from_idx.get(b.as_str()).copied().unwrap_or(usize::MAX);
+            fa.cmp(&fb).then(a.cmp(b))
+        });
+
+        if let Some(forced) = stuck.first() {
+            in_degree.insert(forced.clone(), 0);
+            queue.push_back(forced.clone());
+        }
+    }
+
+    if !all_cycle_nodes.is_empty() {
+        let mut cycle_nodes: Vec<String> = all_cycle_nodes.into_iter().collect();
         cycle_nodes.sort();
         warnings.push(DiagramWarning::CycleDetected { nodes: cycle_nodes });
     }

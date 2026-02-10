@@ -403,3 +403,124 @@ fn test_issue_13_check_invalid() {
     let result = check("mermaid", "flowchart\n");
     assert!(result.is_err(), "Should fail on invalid input");
 }
+
+// ── Issue #18: Layout quality — tiered DAG, inline labels, trailing whitespace
+
+/// Issue #18: D2 cycle graph produces tiered layout (not all at layer 0)
+#[test]
+fn test_issue_18_tiered_layout() {
+    let input = r#"
+users: Users
+api: Production API
+pgbouncer: PgBouncer { shape: cylinder }
+analytics: Analytics Query
+users -> api: requests
+api -> pgbouncer: need conn
+analytics -> pgbouncer: 60 conns held
+api -> users: 503 errors
+"#;
+    let result = render_d2_to_tui(input, RenderOptions::default()).unwrap();
+    let output = &result.output;
+
+    // With tiered layout, pgbouncer should be below api (TB direction default for D2),
+    // not all on the same row. Verify nodes appear on different lines.
+    let lines: Vec<&str> = output.lines().collect();
+
+    let users_line = lines.iter().position(|l| l.contains("Users")).unwrap();
+    let api_line = lines
+        .iter()
+        .position(|l| l.contains("Production API"))
+        .unwrap();
+    let pgbouncer_line = lines.iter().position(|l| l.contains("PgBouncer")).unwrap();
+
+    // users and analytics should be at layer 0, api at layer 1, pgbouncer at layer 2
+    // In TB layout this means users_line < api_line < pgbouncer_line
+    assert!(
+        api_line > users_line,
+        "api should be below users: api={api_line} users={users_line}"
+    );
+    assert!(
+        pgbouncer_line > api_line,
+        "pgbouncer should be below api: pgbouncer={pgbouncer_line} api={api_line}"
+    );
+}
+
+/// Issue #18: Labels render inline (no Labels: legend) for D2 cycle graph
+#[test]
+fn test_issue_18_inline_labels() {
+    let input = r#"
+users: Users
+api: Production API
+pgbouncer: PgBouncer { shape: cylinder }
+analytics: Analytics Query
+users -> api: requests
+api -> pgbouncer: need conn
+analytics -> pgbouncer: 60 conns held
+api -> users: 503 errors
+"#;
+    let result = render_d2_to_tui(input, RenderOptions::default()).unwrap();
+    assert!(
+        !result.output.contains("Labels:"),
+        "Labels should render inline, no legend section needed"
+    );
+}
+
+/// Issue #18: Output should not end with blank lines
+#[test]
+fn test_issue_18_no_trailing_blank_lines() {
+    let input = "flowchart LR\nA --> B";
+    let result = render_mermaid_to_tui(input, RenderOptions::default()).unwrap();
+
+    // No trailing whitespace-only lines
+    let last_line = result.output.lines().last().unwrap_or("");
+    assert!(
+        !last_line.trim().is_empty(),
+        "Output should not end with a blank line"
+    );
+    assert!(
+        !result.output.ends_with('\n'),
+        "Output should not end with newline"
+    );
+}
+
+/// Issue #18: D2 cycle graph output has no trailing blank lines
+#[test]
+fn test_issue_18_no_trailing_blank_lines_d2() {
+    let input = r#"
+users: Users
+api: Production API
+pgbouncer: PgBouncer { shape: cylinder }
+analytics: Analytics Query
+users -> api: requests
+api -> pgbouncer: need conn
+analytics -> pgbouncer: 60 conns held
+api -> users: 503 errors
+"#;
+    let result = render_d2_to_tui(input, RenderOptions::default()).unwrap();
+
+    let last_line = result.output.lines().last().unwrap_or("");
+    assert!(
+        !last_line.trim().is_empty(),
+        "D2 output should not end with blank line"
+    );
+}
+
+/// Issue #18: Cycle warning still fires for graphs with back-edges
+#[test]
+fn test_issue_18_cycle_warning_still_fires() {
+    let input = r#"
+users: Users
+api: Production API
+users -> api: requests
+api -> users: 503 errors
+"#;
+    let result = render_d2_to_tui(input, RenderOptions::default()).unwrap();
+    assert!(
+        !result.warnings.is_empty(),
+        "Cycle warning should still fire"
+    );
+    assert!(
+        result.warnings[0].to_string().contains("Cycle"),
+        "Warning should mention cycle"
+    );
+}
