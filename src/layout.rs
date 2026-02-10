@@ -184,7 +184,10 @@ fn assign_layers(graph: &Graph, warnings: &mut Vec<DiagramWarning>) -> HashMap<N
         }
     }
 
-    // Check for cycles — collect unprocessed node names
+    // Check for cycles — collect unprocessed node names.
+    // Note: deg > 0 catches nodes in cycles AND nodes downstream of cycles
+    // (their in-degree never reaches 0). Being over-inclusive is acceptable
+    // for the warning message.
     if processed < graph.nodes.len() {
         let mut cycle_nodes: Vec<String> = in_degree
             .iter()

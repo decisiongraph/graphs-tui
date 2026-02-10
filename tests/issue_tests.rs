@@ -184,6 +184,30 @@ C -> D
     }
 }
 
+/// Issue #9: D2 cycle graph determinism (original reproducer from #9)
+#[test]
+fn test_issue_9_deterministic_d2_with_cycle() {
+    let input = r#"
+users: Users
+api: Production API
+pgbouncer: PgBouncer { shape: cylinder }
+analytics: Analytics Query
+users -> api: requests
+api -> pgbouncer: need conn
+analytics -> pgbouncer: 60 conns held
+api -> users: 503 errors
+"#;
+    let first = render_d2_to_tui(input, RenderOptions::default())
+        .unwrap()
+        .output;
+    for i in 1..20 {
+        let result = render_d2_to_tui(input, RenderOptions::default())
+            .unwrap()
+            .output;
+        assert_eq!(first, result, "D2 cycle run {i} differs");
+    }
+}
+
 /// Issue #9: Edge label dropped to legend when edge is too short
 #[test]
 fn test_issue_9_edge_label_legend() {
