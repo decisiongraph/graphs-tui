@@ -1,6 +1,6 @@
 //! Tests for GitHub issues
 use graphs_tui::{
-    is_supported, render_d2_to_tui, render_mermaid_to_tui, DiagramWarning, RenderOptions,
+    is_supported, render, render_d2_to_tui, render_mermaid_to_tui, DiagramWarning, RenderOptions,
     SUPPORTED_LANGUAGES,
 };
 
@@ -310,4 +310,48 @@ fn test_issue_12_is_supported() {
     assert!(is_supported("d2"));
     assert!(!is_supported("graphviz"));
     assert!(!is_supported(""));
+}
+
+// ── Issue #11: Unified render() entry point ──────────────────────────
+
+/// Issue #11: render("d2", ...) dispatches to D2 parser
+#[test]
+fn test_issue_11_render_d2() {
+    let result = render("d2", "A -> B", RenderOptions::default()).unwrap();
+    assert!(result.output.contains("A"));
+    assert!(result.output.contains("B"));
+}
+
+/// Issue #11: render("mermaid", ...) dispatches to Mermaid auto-detect
+#[test]
+fn test_issue_11_render_mermaid() {
+    let result = render(
+        "mermaid",
+        "flowchart LR\nA[Start] --> B[End]",
+        RenderOptions::default(),
+    )
+    .unwrap();
+    assert!(result.output.contains("Start"));
+    assert!(result.output.contains("End"));
+}
+
+/// Issue #11: render("mermaid", ...) handles pie charts
+#[test]
+fn test_issue_11_render_mermaid_pie() {
+    let result = render(
+        "mermaid",
+        "pie\n    \"A\" : 60\n    \"B\" : 40",
+        RenderOptions::default(),
+    )
+    .unwrap();
+    assert!(result.output.contains("A"));
+    assert!(result.output.contains("60"));
+}
+
+/// Issue #11: render is case-insensitive on lang
+#[test]
+fn test_issue_11_render_case_insensitive() {
+    let result = render("D2", "X -> Y", RenderOptions::default()).unwrap();
+    assert!(result.output.contains("X"));
+    assert!(result.output.contains("Y"));
 }

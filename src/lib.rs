@@ -149,6 +149,30 @@ pub fn detect_format(input: &str) -> DiagramFormat {
     DiagramFormat::D2
 }
 
+/// Unified entry point — render a diagram by language name.
+///
+/// Dispatches to the correct parser based on `lang`:
+/// - `"d2"` → D2 parser
+/// - `"mermaid"` (or any other value) → Mermaid auto-detect (flowchart, state, sequence, pie)
+///
+/// # Example
+/// ```
+/// use graphs_tui::{render, RenderOptions};
+///
+/// let result = render("d2", "A -> B", RenderOptions::default()).unwrap();
+/// println!("{}", result.output);
+/// ```
+pub fn render(
+    lang: &str,
+    code: &str,
+    options: RenderOptions,
+) -> Result<RenderResult, MermaidError> {
+    match lang.to_lowercase().as_str() {
+        "d2" => render_d2_to_tui(code, options),
+        _ => render_diagram(code, options),
+    }
+}
+
 /// Render diagram with auto-detection of format
 ///
 /// # Arguments
