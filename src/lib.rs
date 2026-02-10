@@ -8,8 +8,11 @@
 //! use graphs_tui::{render_mermaid_to_tui, RenderOptions};
 //!
 //! let input = "flowchart LR\nA[Start] --> B[End]";
-//! let output = render_mermaid_to_tui(input, RenderOptions::default()).unwrap();
-//! println!("{}", output);
+//! let result = render_mermaid_to_tui(input, RenderOptions::default()).unwrap();
+//! println!("{}", result.output);
+//! for warning in &result.warnings {
+//!     eprintln!("Warning: {}", warning);
+//! }
 //! ```
 //!
 //! # State Diagram Example
@@ -17,8 +20,8 @@
 //! use graphs_tui::{render_state_diagram, RenderOptions};
 //!
 //! let input = "stateDiagram-v2\n    [*] --> Idle\n    Idle --> Running";
-//! let output = render_state_diagram(input, RenderOptions::default()).unwrap();
-//! println!("{}", output);
+//! let result = render_state_diagram(input, RenderOptions::default()).unwrap();
+//! println!("{}", result.output);
 //! ```
 //!
 //! # Pie Chart Example
@@ -26,8 +29,8 @@
 //! use graphs_tui::{render_pie_chart, RenderOptions};
 //!
 //! let input = "pie\n    \"Chrome\" : 65\n    \"Firefox\" : 35";
-//! let output = render_pie_chart(input, RenderOptions::default()).unwrap();
-//! println!("{}", output);
+//! let result = render_pie_chart(input, RenderOptions::default()).unwrap();
+//! println!("{}", result.output);
 //! ```
 //!
 //! # D2 Example
@@ -35,8 +38,8 @@
 //! use graphs_tui::{render_d2_to_tui, RenderOptions};
 //!
 //! let input = "A -> B: connection";
-//! let output = render_d2_to_tui(input, RenderOptions::default()).unwrap();
-//! println!("{}", output);
+//! let result = render_d2_to_tui(input, RenderOptions::default()).unwrap();
+//! println!("{}", result.output);
 //! ```
 //!
 //! # Sequence Diagram Example
@@ -44,8 +47,8 @@
 //! use graphs_tui::{render_sequence_diagram, RenderOptions};
 //!
 //! let input = "sequenceDiagram\n    Alice->>Bob: Hello\n    Bob-->>Alice: Hi!";
-//! let output = render_sequence_diagram(input, RenderOptions::default()).unwrap();
-//! println!("{}", output);
+//! let result = render_sequence_diagram(input, RenderOptions::default()).unwrap();
+//! println!("{}", result.output);
 //! ```
 //!
 //! # Auto-detect Format
@@ -74,7 +77,8 @@ mod types;
 pub use error::MermaidError;
 pub use layout::{compute_layout, compute_layout_with_options};
 pub use types::{
-    Direction, Edge, EdgeStyle, Graph, Node, NodeId, NodeShape, RenderOptions, Subgraph,
+    Direction, Edge, EdgeStyle, Graph, Node, NodeId, NodeShape, RenderOptions, RenderResult,
+    Subgraph,
 };
 
 use d2_parser::parse_d2;
@@ -139,9 +143,9 @@ pub fn detect_format(input: &str) -> DiagramFormat {
 /// * `options` - Rendering options
 ///
 /// # Returns
-/// * `Ok(String)` - Rendered diagram as string
+/// * `Ok(RenderResult)` - Rendered diagram with any warnings
 /// * `Err(MermaidError)` - Parse or layout error
-pub fn render_diagram(input: &str, options: RenderOptions) -> Result<String, MermaidError> {
+pub fn render_diagram(input: &str, options: RenderOptions) -> Result<RenderResult, MermaidError> {
     match detect_format(input) {
         DiagramFormat::Mermaid => render_mermaid_to_tui(input, options),
         DiagramFormat::StateDiagram => render_state_diagram(input, options),
@@ -158,12 +162,18 @@ pub fn render_diagram(input: &str, options: RenderOptions) -> Result<String, Mer
 /// * `options` - Rendering options (ASCII mode, max width)
 ///
 /// # Returns
-/// * `Ok(String)` - Rendered diagram as string
+/// * `Ok(RenderResult)` - Rendered diagram with any warnings
 /// * `Err(MermaidError)` - Parse or layout error
-pub fn render_mermaid_to_tui(input: &str, options: RenderOptions) -> Result<String, MermaidError> {
+pub fn render_mermaid_to_tui(
+    input: &str,
+    options: RenderOptions,
+) -> Result<RenderResult, MermaidError> {
     let mut graph = parse_mermaid(input)?;
-    compute_layout_with_options(&mut graph, &options);
-    Ok(render_graph(&graph, &options))
+    let warnings = compute_layout_with_options(&mut graph, &options);
+    Ok(RenderResult {
+        output: render_graph(&graph, &options),
+        warnings,
+    })
 }
 
 /// Render mermaid state diagram to terminal-displayable text
@@ -173,12 +183,18 @@ pub fn render_mermaid_to_tui(input: &str, options: RenderOptions) -> Result<Stri
 /// * `options` - Rendering options (ASCII mode, max width)
 ///
 /// # Returns
-/// * `Ok(String)` - Rendered diagram as string
+/// * `Ok(RenderResult)` - Rendered diagram with any warnings
 /// * `Err(MermaidError)` - Parse or layout error
-pub fn render_state_diagram(input: &str, options: RenderOptions) -> Result<String, MermaidError> {
+pub fn render_state_diagram(
+    input: &str,
+    options: RenderOptions,
+) -> Result<RenderResult, MermaidError> {
     let mut graph = parse_state_diagram(input)?;
-    compute_layout_with_options(&mut graph, &options);
-    Ok(render_graph(&graph, &options))
+    let warnings = compute_layout_with_options(&mut graph, &options);
+    Ok(RenderResult {
+        output: render_graph(&graph, &options),
+        warnings,
+    })
 }
 
 /// Render mermaid pie chart to terminal-displayable text
@@ -190,11 +206,14 @@ pub fn render_state_diagram(input: &str, options: RenderOptions) -> Result<Strin
 /// * `options` - Rendering options
 ///
 /// # Returns
-/// * `Ok(String)` - Rendered chart as string
+/// * `Ok(RenderResult)` - Rendered chart with any warnings
 /// * `Err(MermaidError)` - Parse error
-pub fn render_pie_chart(input: &str, options: RenderOptions) -> Result<String, MermaidError> {
+pub fn render_pie_chart(input: &str, options: RenderOptions) -> Result<RenderResult, MermaidError> {
     let chart = parse_pie(input)?;
-    Ok(render_pie(&chart, &options))
+    Ok(RenderResult {
+        output: render_pie(&chart, &options),
+        warnings: Vec::new(),
+    })
 }
 
 /// Render D2 diagram syntax to terminal-displayable text
@@ -204,12 +223,18 @@ pub fn render_pie_chart(input: &str, options: RenderOptions) -> Result<String, M
 /// * `options` - Rendering options (ASCII mode, max width)
 ///
 /// # Returns
-/// * `Ok(String)` - Rendered diagram as string
+/// * `Ok(RenderResult)` - Rendered diagram with any warnings
 /// * `Err(MermaidError)` - Parse or layout error
-pub fn render_d2_to_tui(input: &str, options: RenderOptions) -> Result<String, MermaidError> {
+pub fn render_d2_to_tui(
+    input: &str,
+    options: RenderOptions,
+) -> Result<RenderResult, MermaidError> {
     let mut graph = parse_d2(input)?;
-    compute_layout_with_options(&mut graph, &options);
-    Ok(render_graph(&graph, &options))
+    let warnings = compute_layout_with_options(&mut graph, &options);
+    Ok(RenderResult {
+        output: render_graph(&graph, &options),
+        warnings,
+    })
 }
 
 /// Render mermaid sequence diagram to terminal-displayable text
@@ -219,12 +244,15 @@ pub fn render_d2_to_tui(input: &str, options: RenderOptions) -> Result<String, M
 /// * `options` - Rendering options (ASCII mode, max width)
 ///
 /// # Returns
-/// * `Ok(String)` - Rendered diagram as string
+/// * `Ok(RenderResult)` - Rendered diagram with any warnings
 /// * `Err(MermaidError)` - Parse error
 pub fn render_sequence_diagram(
     input: &str,
     options: RenderOptions,
-) -> Result<String, MermaidError> {
+) -> Result<RenderResult, MermaidError> {
     let diagram = parse_seq(input)?;
-    Ok(render_seq(&diagram, &options))
+    Ok(RenderResult {
+        output: render_seq(&diagram, &options),
+        warnings: Vec::new(),
+    })
 }

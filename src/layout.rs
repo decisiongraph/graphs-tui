@@ -10,12 +10,18 @@ const MIN_GAP: usize = 2;
 const SUBGRAPH_PADDING: usize = 2;
 
 /// Compute layout for all nodes in the graph
-pub fn compute_layout(graph: &mut Graph) {
-    compute_layout_with_options(graph, &RenderOptions::default());
+///
+/// Returns a list of warnings (e.g., cycle detected).
+pub fn compute_layout(graph: &mut Graph) -> Vec<String> {
+    compute_layout_with_options(graph, &RenderOptions::default())
 }
 
 /// Compute layout for all nodes with render options (considers max_width)
-pub fn compute_layout_with_options(graph: &mut Graph, options: &RenderOptions) {
+///
+/// Returns a list of warnings (e.g., cycle detected).
+pub fn compute_layout_with_options(graph: &mut Graph, options: &RenderOptions) -> Vec<String> {
+    let mut warnings = Vec::new();
+
     // 1. Compute node sizes (use chars().count() for proper Unicode handling)
     for node in graph.nodes.values_mut() {
         node.width = (node.label.chars().count() + 2).max(MIN_NODE_WIDTH);
@@ -23,7 +29,7 @@ pub fn compute_layout_with_options(graph: &mut Graph, options: &RenderOptions) {
     }
 
     // 2. Topological layering
-    let layers = assign_layers(graph);
+    let layers = assign_layers(graph, &mut warnings);
 
     // 3. Calculate gaps based on available width
     let (h_gap, v_gap) = calculate_gaps(graph, &layers, options.max_width);
@@ -33,6 +39,8 @@ pub fn compute_layout_with_options(graph: &mut Graph, options: &RenderOptions) {
 
     // 5. Compute subgraph bounding boxes
     compute_subgraph_bounds(graph);
+
+    warnings
 }
 
 /// Calculate adaptive gaps based on available width
@@ -114,7 +122,7 @@ fn compute_subgraph_bounds(graph: &mut Graph) {
 }
 
 /// Assign layer numbers using Kahn's algorithm
-fn assign_layers(graph: &Graph) -> HashMap<NodeId, usize> {
+fn assign_layers(graph: &Graph, warnings: &mut Vec<String>) -> HashMap<NodeId, usize> {
     let mut node_layers: HashMap<NodeId, usize> = HashMap::new();
     let mut in_degree: HashMap<NodeId, usize> = HashMap::new();
 
@@ -167,7 +175,7 @@ fn assign_layers(graph: &Graph) -> HashMap<NodeId, usize> {
 
     // Check for cycles
     if processed < graph.nodes.len() {
-        eprintln!("Warning: Cycle detected in graph. Layout may be imperfect.");
+        warnings.push("Cycle detected in graph. Layout may be imperfect.".to_string());
     }
 
     node_layers
@@ -280,25 +288,25 @@ mod tests {
     #[test]
     fn test_layout_lr() {
         let mut graph = parse_mermaid("flowchart LR\nA --> B").unwrap();
-        compute_layout(&mut graph);
+        let warnings = compute_layout(&mut graph);
 
         let a = graph.nodes.get("A").unwrap();
         let b = graph.nodes.get("B").unwrap();
 
-        // A should be to the left of B
         assert!(a.x < b.x);
+        assert!(warnings.is_empty());
     }
 
     #[test]
     fn test_layout_tb() {
         let mut graph = parse_mermaid("flowchart TB\nA --> B").unwrap();
-        compute_layout(&mut graph);
+        let warnings = compute_layout(&mut graph);
 
         let a = graph.nodes.get("A").unwrap();
         let b = graph.nodes.get("B").unwrap();
 
-        // A should be above B
         assert!(a.y < b.y);
+        assert!(warnings.is_empty());
     }
 
     #[test]
@@ -309,5 +317,20 @@ mod tests {
         let a = graph.nodes.get("A").unwrap();
         assert_eq!(a.width, "Hello World".len() + 2);
         assert_eq!(a.height, NODE_HEIGHT);
+    }
+
+    #[test]
+    fn test_cycle_produces_warning() {
+        let mut graph = parse_mermaid("flowchart LR\nA --> B\nB --> C\nC --> A").unwrap();
+        let warnings = compute_layout(&mut graph);
+        assert_eq!(warnings.len(), 1);
+        assert!(warnings[0].contains("Cycle"));
+    }
+
+    #[test]
+    fn test_acyclic_no_warning() {
+        let mut graph = parse_mermaid("flowchart LR\nA --> B\nB --> C\nA --> C").unwrap();
+        let warnings = compute_layout(&mut graph);
+        assert!(warnings.is_empty());
     }
 }

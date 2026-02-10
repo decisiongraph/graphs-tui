@@ -7,26 +7,26 @@ use graphs_tui::{
 fn test_simple_lr_flowchart() {
     let input = "flowchart LR\nA[Start] --> B[End]";
     let result = render_mermaid_to_tui(input, RenderOptions::default()).unwrap();
-    assert!(result.contains("Start"));
-    assert!(result.contains("End"));
-    assert!(result.contains("▶"));
+    assert!(result.output.contains("Start"));
+    assert!(result.output.contains("End"));
+    assert!(result.output.contains("▶"));
 }
 
 #[test]
 fn test_simple_tb_flowchart() {
     let input = "flowchart TB\nA[Start] --> B[End]";
     let result = render_mermaid_to_tui(input, RenderOptions::default()).unwrap();
-    assert!(result.contains("Start"));
-    assert!(result.contains("End"));
-    assert!(result.contains("▼"));
+    assert!(result.output.contains("Start"));
+    assert!(result.output.contains("End"));
+    assert!(result.output.contains("▼"));
 }
 
 #[test]
 fn test_labels_correctly() {
     let input = "flowchart LR\nA[Node A] --> B[Node B]";
     let result = render_mermaid_to_tui(input, RenderOptions::default()).unwrap();
-    assert!(result.contains("Node A"));
-    assert!(result.contains("Node B"));
+    assert!(result.output.contains("Node A"));
+    assert!(result.output.contains("Node B"));
 }
 
 #[test]
@@ -40,9 +40,9 @@ fn test_ascii_mode() {
         },
     )
     .unwrap();
-    assert!(result.contains("+---+"));
-    assert!(result.contains(">"));
-    assert!(!result.contains("┌"));
+    assert!(result.output.contains("+---+"));
+    assert!(result.output.contains(">"));
+    assert!(!result.output.contains("┌"));
 }
 
 #[test]
@@ -59,33 +59,33 @@ fn test_unsupported_diagram_type() {
 fn test_chained_edges() {
     let input = "flowchart LR\nA --> B --> C --> D";
     let result = render_mermaid_to_tui(input, RenderOptions::default()).unwrap();
-    assert!(result.contains("A"));
-    assert!(result.contains("B"));
-    assert!(result.contains("C"));
-    assert!(result.contains("D"));
+    assert!(result.output.contains("A"));
+    assert!(result.output.contains("B"));
+    assert!(result.output.contains("C"));
+    assert!(result.output.contains("D"));
 }
 
 #[test]
 fn test_labels_with_spaces_and_special_chars() {
     let input = "flowchart LR\nA[Start Here] --> B[Wait... what?]\nB --> C[Done!]";
     let result = render_mermaid_to_tui(input, RenderOptions::default()).unwrap();
-    assert!(result.contains("Start Here"));
-    assert!(result.contains("Wait... what?"));
-    assert!(result.contains("Done!"));
+    assert!(result.output.contains("Start Here"));
+    assert!(result.output.contains("Wait... what?"));
+    assert!(result.output.contains("Done!"));
 }
 
 #[test]
 fn test_rl_direction() {
     let input = "flowchart RL\nA --> B";
     let result = render_mermaid_to_tui(input, RenderOptions::default()).unwrap();
-    assert!(result.contains("◀"));
+    assert!(result.output.contains("◀"));
 }
 
 #[test]
 fn test_bt_direction() {
     let input = "flowchart BT\nA --> B";
     let result = render_mermaid_to_tui(input, RenderOptions::default()).unwrap();
-    assert!(result.contains("▲"));
+    assert!(result.output.contains("▲"));
 }
 
 #[test]
@@ -98,17 +98,17 @@ fn test_empty_input() {
 fn test_comments_ignored() {
     let input = "flowchart LR\n%% this is a comment\nA --> B";
     let result = render_mermaid_to_tui(input, RenderOptions::default()).unwrap();
-    assert!(result.contains("A"));
-    assert!(result.contains("B"));
-    assert!(!result.contains("comment"));
+    assert!(result.output.contains("A"));
+    assert!(result.output.contains("B"));
+    assert!(!result.output.contains("comment"));
 }
 
 #[test]
 fn test_node_label_update() {
     let input = "flowchart LR\nA\nB[Label B]\nA --> B\nA[Label A]";
     let result = render_mermaid_to_tui(input, RenderOptions::default()).unwrap();
-    assert!(result.contains("Label A"));
-    assert!(result.contains("Label B"));
+    assert!(result.output.contains("Label A"));
+    assert!(result.output.contains("Label B"));
 }
 
 /// graph TD is now supported
@@ -116,9 +116,9 @@ fn test_node_label_update() {
 fn test_graph_td_supported() {
     let input = "graph TD\nA --> B";
     let result = render_mermaid_to_tui(input, RenderOptions::default()).unwrap();
-    assert!(result.contains("A"));
-    assert!(result.contains("B"));
-    assert!(result.contains("▼")); // TB direction arrow
+    assert!(result.output.contains("A"));
+    assert!(result.output.contains("B"));
+    assert!(result.output.contains("▼")); // TB direction arrow
 }
 
 /// Simplified version of web.mmd architecture that works with current parser
@@ -141,17 +141,17 @@ Worker --> Email[Email]"#;
     let result = render_mermaid_to_tui(input, RenderOptions::default()).unwrap();
 
     // Verify key components are rendered
-    assert!(result.contains("User"));
-    assert!(result.contains("CDN"));
-    assert!(result.contains("Browser"));
-    assert!(result.contains("API Gateway"));
-    assert!(result.contains("App Server"));
-    assert!(result.contains("Database"));
-    assert!(result.contains("Cache"));
-    assert!(result.contains("Worker"));
+    assert!(result.output.contains("User"));
+    assert!(result.output.contains("CDN"));
+    assert!(result.output.contains("Browser"));
+    assert!(result.output.contains("API Gateway"));
+    assert!(result.output.contains("App Server"));
+    assert!(result.output.contains("Database"));
+    assert!(result.output.contains("Cache"));
+    assert!(result.output.contains("Worker"));
 
     // Print for visual verification
-    println!("Web Architecture (simplified):\n{}", result);
+    println!("Web Architecture (simplified):\n{}", result.output);
 }
 
 /// Test edge labels are rendered
@@ -161,11 +161,11 @@ fn test_edge_labels() {
 A[Client] -->|HTTP| B[Server]"#;
 
     let result = render_mermaid_to_tui(input, RenderOptions::default()).unwrap();
-    assert!(result.contains("Client"));
-    assert!(result.contains("Server"));
-    assert!(result.contains("HTTP"));
+    assert!(result.output.contains("Client"));
+    assert!(result.output.contains("Server"));
+    assert!(result.output.contains("HTTP"));
 
-    println!("Edge label test:\n{}", result);
+    println!("Edge label test:\n{}", result.output);
 }
 
 /// Web architecture with edge labels describing the relationships
@@ -188,17 +188,17 @@ Worker -->|notify| Email[Email]"#;
     let result = render_mermaid_to_tui(input, RenderOptions::default()).unwrap();
 
     // Verify nodes
-    assert!(result.contains("User"));
-    assert!(result.contains("CDN"));
-    assert!(result.contains("Browser"));
-    assert!(result.contains("API Gateway"));
-    assert!(result.contains("App Server"));
-    assert!(result.contains("Database"));
+    assert!(result.output.contains("User"));
+    assert!(result.output.contains("CDN"));
+    assert!(result.output.contains("Browser"));
+    assert!(result.output.contains("API Gateway"));
+    assert!(result.output.contains("App Server"));
+    assert!(result.output.contains("Database"));
 
     // Verify some edge labels are rendered (not all may fit in tight spaces)
-    assert!(result.contains("HTTPS") || result.contains("static") || result.contains("route"));
+    assert!(result.output.contains("HTTPS") || result.output.contains("static") || result.output.contains("route"));
 
-    println!("Web Architecture with edge labels:\n{}", result);
+    println!("Web Architecture with edge labels:\n{}", result.output);
 }
 
 /// Test different node shapes
@@ -213,18 +213,18 @@ E --> F([Stadium])"#;
 
     let result = render_mermaid_to_tui(input, RenderOptions::default()).unwrap();
 
-    assert!(result.contains("Rectangle"));
-    assert!(result.contains("Rounded"));
-    assert!(result.contains("Circle"));
-    assert!(result.contains("Diamond"));
-    assert!(result.contains("Database"));
-    assert!(result.contains("Stadium"));
+    assert!(result.output.contains("Rectangle"));
+    assert!(result.output.contains("Rounded"));
+    assert!(result.output.contains("Circle"));
+    assert!(result.output.contains("Diamond"));
+    assert!(result.output.contains("Database"));
+    assert!(result.output.contains("Stadium"));
 
     // Check shape-specific characters
-    assert!(result.contains("╭")); // Rounded corner
-    assert!(result.contains("<")); // Diamond side
+    assert!(result.output.contains("╭")); // Rounded corner
+    assert!(result.output.contains("<")); // Diamond side
 
-    println!("Node shapes:\n{}", result);
+    println!("Node shapes:\n{}", result.output);
 }
 
 /// Test subgraph parsing (layout not yet implemented)
@@ -238,10 +238,10 @@ end
 API --> DB"#;
 
     let result = render_mermaid_to_tui(input, RenderOptions::default()).unwrap();
-    assert!(result.contains("API Server"));
-    assert!(result.contains("Database"));
+    assert!(result.output.contains("API Server"));
+    assert!(result.output.contains("Database"));
 
-    println!("Subgraph:\n{}", result);
+    println!("Subgraph:\n{}", result.output);
 }
 
 /// Test hexagon shape
@@ -249,10 +249,10 @@ API --> DB"#;
 fn test_hexagon_shape() {
     let input = "flowchart LR\nA{{Prepare}} --> B{{Execute}}";
     let result = render_mermaid_to_tui(input, RenderOptions::default()).unwrap();
-    assert!(result.contains("Prepare"));
-    assert!(result.contains("Execute"));
-    assert!(result.contains("<")); // Hexagon side character
-    println!("Hexagon:\n{}", result);
+    assert!(result.output.contains("Prepare"));
+    assert!(result.output.contains("Execute"));
+    assert!(result.output.contains("<")); // Hexagon side character
+    println!("Hexagon:\n{}", result.output);
 }
 
 /// Test different edge styles
@@ -261,30 +261,30 @@ fn test_edge_styles() {
     // Solid arrow (default)
     let input1 = "flowchart LR\nA --> B";
     let r1 = render_mermaid_to_tui(input1, RenderOptions::default()).unwrap();
-    assert!(r1.contains("▶"));
-    println!("Solid arrow:\n{}", r1);
+    assert!(r1.output.contains("▶"));
+    println!("Solid arrow:\n{}", r1.output);
 
     // Solid line (no arrow)
     let input2 = "flowchart LR\nA --- B";
     let r2 = render_mermaid_to_tui(input2, RenderOptions::default()).unwrap();
-    assert!(r2.contains("─")); // Has line
-    println!("Solid line:\n{}", r2);
+    assert!(r2.output.contains("─")); // Has line
+    println!("Solid line:\n{}", r2.output);
 
     // Dotted arrow
     let input3 = "flowchart LR\nA -.-> B";
     let r3 = render_mermaid_to_tui(input3, RenderOptions::default()).unwrap();
-    assert!(r3.contains("A"));
-    assert!(r3.contains("B"));
-    assert!(r3.contains("·")); // Dotted line character
-    println!("Dotted arrow:\n{}", r3);
+    assert!(r3.output.contains("A"));
+    assert!(r3.output.contains("B"));
+    assert!(r3.output.contains("·")); // Dotted line character
+    println!("Dotted arrow:\n{}", r3.output);
 
     // Thick arrow
     let input4 = "flowchart LR\nA ==> B";
     let r4 = render_mermaid_to_tui(input4, RenderOptions::default()).unwrap();
-    assert!(r4.contains("A"));
-    assert!(r4.contains("B"));
-    assert!(r4.contains("═")); // Thick line character
-    println!("Thick arrow:\n{}", r4);
+    assert!(r4.output.contains("A"));
+    assert!(r4.output.contains("B"));
+    assert!(r4.output.contains("═")); // Thick line character
+    println!("Thick arrow:\n{}", r4.output);
 }
 
 /// Test parallelogram and trapezoid shapes
@@ -292,9 +292,9 @@ fn test_edge_styles() {
 fn test_parallelogram_trapezoid_shapes() {
     let input = "flowchart LR\nA[/Input/] --> B[/Process\\]";
     let result = render_mermaid_to_tui(input, RenderOptions::default()).unwrap();
-    assert!(result.contains("Input"));
-    assert!(result.contains("Process"));
-    println!("Parallelogram/Trapezoid:\n{}", result);
+    assert!(result.output.contains("Input"));
+    assert!(result.output.contains("Process"));
+    println!("Parallelogram/Trapezoid:\n{}", result.output);
 }
 
 // ============================================
@@ -306,9 +306,9 @@ fn test_parallelogram_trapezoid_shapes() {
 fn test_d2_simple() {
     let input = "A -> B";
     let result = render_d2_to_tui(input, RenderOptions::default()).unwrap();
-    assert!(result.contains("A"));
-    assert!(result.contains("B"));
-    println!("D2 simple:\n{}", result);
+    assert!(result.output.contains("A"));
+    assert!(result.output.contains("B"));
+    println!("D2 simple:\n{}", result.output);
 }
 
 /// Test D2 with custom labels
@@ -320,9 +320,9 @@ db: Database
 server -> db
 "#;
     let result = render_d2_to_tui(input, RenderOptions::default()).unwrap();
-    assert!(result.contains("Web Server"));
-    assert!(result.contains("Database"));
-    println!("D2 labels:\n{}", result);
+    assert!(result.output.contains("Web Server"));
+    assert!(result.output.contains("Database"));
+    println!("D2 labels:\n{}", result.output);
 }
 
 /// Test D2 edge labels
@@ -331,11 +331,11 @@ fn test_d2_edge_labels() {
     let input = r#"client -> server: "HTTP request"
 server -> db: "SQL query""#;
     let result = render_d2_to_tui(input, RenderOptions::default()).unwrap();
-    println!("D2 edge labels:\n{}", result);
+    println!("D2 edge labels:\n{}", result.output);
     // Edge labels may be truncated if space is tight; verify nodes at minimum
-    assert!(result.contains("client"));
-    assert!(result.contains("server"));
-    assert!(result.contains("db"));
+    assert!(result.output.contains("client"));
+    assert!(result.output.contains("server"));
+    assert!(result.output.contains("db"));
 }
 
 /// Test D2 shape types
@@ -349,9 +349,9 @@ circle_node.shape: circle
 db -> circle_node
 "#;
     let result = render_d2_to_tui(input, RenderOptions::default()).unwrap();
-    assert!(result.contains("Database"));
-    assert!(result.contains("Circle"));
-    println!("D2 shapes:\n{}", result);
+    assert!(result.output.contains("Database"));
+    assert!(result.output.contains("Circle"));
+    println!("D2 shapes:\n{}", result.output);
 }
 
 /// Test D2 containers
@@ -369,10 +369,10 @@ web -> api
 api -> db
 "#;
     let result = render_d2_to_tui(input, RenderOptions::default()).unwrap();
-    assert!(result.contains("API Server"));
-    assert!(result.contains("Database"));
-    assert!(result.contains("Web App"));
-    println!("D2 containers:\n{}", result);
+    assert!(result.output.contains("API Server"));
+    assert!(result.output.contains("Database"));
+    assert!(result.output.contains("Web App"));
+    println!("D2 containers:\n{}", result.output);
 }
 
 /// Test D2 backward arrow
@@ -380,9 +380,9 @@ api -> db
 fn test_d2_backward_arrow() {
     let input = "A <- B";
     let result = render_d2_to_tui(input, RenderOptions::default()).unwrap();
-    assert!(result.contains("A"));
-    assert!(result.contains("B"));
-    println!("D2 backward arrow:\n{}", result);
+    assert!(result.output.contains("A"));
+    assert!(result.output.contains("B"));
+    println!("D2 backward arrow:\n{}", result.output);
 }
 
 /// Test D2 simple line (no arrow)
@@ -390,9 +390,9 @@ fn test_d2_backward_arrow() {
 fn test_d2_line() {
     let input = "A -- B";
     let result = render_d2_to_tui(input, RenderOptions::default()).unwrap();
-    assert!(result.contains("A"));
-    assert!(result.contains("B"));
-    println!("D2 line:\n{}", result);
+    assert!(result.output.contains("A"));
+    assert!(result.output.contains("B"));
+    println!("D2 line:\n{}", result.output);
 }
 
 /// Test format detection for Mermaid
@@ -422,16 +422,16 @@ fn test_render_diagram_auto() {
     // Mermaid input
     let mermaid = "flowchart LR\nA[Start] --> B[End]";
     let result1 = render_diagram(mermaid, RenderOptions::default()).unwrap();
-    assert!(result1.contains("Start"));
-    assert!(result1.contains("End"));
+    assert!(result1.output.contains("Start"));
+    assert!(result1.output.contains("End"));
 
     // D2 input
     let d2 = r#"start: Start
 end: End
 start -> end"#;
     let result2 = render_diagram(d2, RenderOptions::default()).unwrap();
-    assert!(result2.contains("Start"));
-    assert!(result2.contains("End"));
+    assert!(result2.output.contains("Start"));
+    assert!(result2.output.contains("End"));
 }
 
 /// Test D2 web architecture example
@@ -459,11 +459,11 @@ queue -> worker: process
 worker -> db: update
 "#;
     let result = render_d2_to_tui(input, RenderOptions::default()).unwrap();
-    assert!(result.contains("User"));
-    assert!(result.contains("CDN"));
-    assert!(result.contains("API Gateway"));
-    assert!(result.contains("Database"));
-    println!("D2 Web Architecture:\n{}", result);
+    assert!(result.output.contains("User"));
+    assert!(result.output.contains("CDN"));
+    assert!(result.output.contains("API Gateway"));
+    assert!(result.output.contains("Database"));
+    println!("D2 Web Architecture:\n{}", result.output);
 }
 
 // ============================================
@@ -479,9 +479,9 @@ fn test_state_diagram_simple() {
     Running --> [*]
 "#;
     let result = render_state_diagram(input, RenderOptions::default()).unwrap();
-    assert!(result.contains("Idle"));
-    assert!(result.contains("Running"));
-    println!("State diagram simple:\n{}", result);
+    assert!(result.output.contains("Idle"));
+    assert!(result.output.contains("Running"));
+    println!("State diagram simple:\n{}", result.output);
 }
 
 /// Test state diagram with descriptions
@@ -494,12 +494,12 @@ fn test_state_diagram_descriptions() {
     Processing --> Waiting: reset
 "#;
     let result = render_state_diagram(input, RenderOptions::default()).unwrap();
-    println!("State diagram descriptions:\n{}", result);
+    println!("State diagram descriptions:\n{}", result.output);
     // Note: edges may overlap with labels in current layout
     // Verify partial label content
-    assert!(result.contains("Waiting") || result.contains("Wait"));
-    assert!(result.contains("Process"));
-    assert!(result.contains("reset")); // edge label
+    assert!(result.output.contains("Waiting") || result.output.contains("Wait"));
+    assert!(result.output.contains("Process"));
+    assert!(result.output.contains("reset")); // edge label
 }
 
 /// Test state diagram with composite states
@@ -515,10 +515,10 @@ fn test_state_diagram_composite() {
     Active --> [*]
 "#;
     let result = render_state_diagram(input, RenderOptions::default()).unwrap();
-    println!("State diagram composite:\n{}", result);
+    println!("State diagram composite:\n{}", result.output);
     // Check key elements are present
-    assert!(result.contains("Active"));
-    assert!(result.contains("Running"));
+    assert!(result.output.contains("Active"));
+    assert!(result.output.contains("Running"));
 }
 
 /// Test state diagram v1 syntax
@@ -529,10 +529,10 @@ fn test_state_diagram_v1() {
     s2 --> s3
 "#;
     let result = render_state_diagram(input, RenderOptions::default()).unwrap();
-    assert!(result.contains("s1"));
-    assert!(result.contains("s2"));
-    assert!(result.contains("s3"));
-    println!("State diagram v1:\n{}", result);
+    assert!(result.output.contains("s1"));
+    assert!(result.output.contains("s2"));
+    assert!(result.output.contains("s3"));
+    println!("State diagram v1:\n{}", result.output);
 }
 
 // ============================================
@@ -550,10 +550,10 @@ fn test_pie_chart_simple() {
     "Edge" : 8
 "#;
     let result = render_pie_chart(input, RenderOptions::default()).unwrap();
-    assert!(result.contains("Chrome"));
-    assert!(result.contains("Firefox"));
-    assert!(result.contains("65"));
-    println!("Pie chart:\n{}", result);
+    assert!(result.output.contains("Chrome"));
+    assert!(result.output.contains("Firefox"));
+    assert!(result.output.contains("65"));
+    println!("Pie chart:\n{}", result.output);
 }
 
 /// Test pie chart without title
@@ -564,11 +564,11 @@ fn test_pie_chart_no_title() {
     "No" : 30
 "#;
     let result = render_pie_chart(input, RenderOptions::default()).unwrap();
-    assert!(result.contains("Yes"));
-    assert!(result.contains("No"));
-    assert!(result.contains("70"));
-    assert!(result.contains("30"));
-    println!("Pie chart no title:\n{}", result);
+    assert!(result.output.contains("Yes"));
+    assert!(result.output.contains("No"));
+    assert!(result.output.contains("70"));
+    assert!(result.output.contains("30"));
+    println!("Pie chart no title:\n{}", result.output);
 }
 
 /// Test pie chart showData option
@@ -581,9 +581,9 @@ fn test_pie_chart_show_data() {
     "Not Started" : 20
 "#;
     let result = render_pie_chart(input, RenderOptions::default()).unwrap();
-    assert!(result.contains("Completed"));
-    assert!(result.contains("45"));
-    println!("Pie chart showData:\n{}", result);
+    assert!(result.output.contains("Completed"));
+    assert!(result.output.contains("45"));
+    println!("Pie chart showData:\n{}", result.output);
 }
 
 // ============================================
@@ -598,11 +598,11 @@ fn test_sequence_diagram_simple() {
     Bob-->>Alice: Hi Alice!
 "#;
     let result = render_sequence_diagram(input, RenderOptions::default()).unwrap();
-    assert!(result.contains("Alice"));
-    assert!(result.contains("Bob"));
-    assert!(result.contains("Hello Bob!"));
-    assert!(result.contains("Hi Alice!"));
-    println!("Sequence diagram simple:\n{}", result);
+    assert!(result.output.contains("Alice"));
+    assert!(result.output.contains("Bob"));
+    assert!(result.output.contains("Hello Bob!"));
+    assert!(result.output.contains("Hi Alice!"));
+    println!("Sequence diagram simple:\n{}", result.output);
 }
 
 /// Test sequence diagram with participants
@@ -614,9 +614,9 @@ fn test_sequence_diagram_participants() {
     A->>B: Message
 "#;
     let result = render_sequence_diagram(input, RenderOptions::default()).unwrap();
-    assert!(result.contains("Alice"));
-    assert!(result.contains("Bob"));
-    println!("Sequence diagram participants:\n{}", result);
+    assert!(result.output.contains("Alice"));
+    assert!(result.output.contains("Bob"));
+    println!("Sequence diagram participants:\n{}", result.output);
 }
 
 /// Test sequence diagram format detection
@@ -634,9 +634,9 @@ fn test_sequence_diagram_auto() {
     Server-->>Client: Response
 "#;
     let result = render_diagram(input, RenderOptions::default()).unwrap();
-    assert!(result.contains("Client"));
-    assert!(result.contains("Server"));
-    println!("Sequence auto-detect:\n{}", result);
+    assert!(result.output.contains("Client"));
+    assert!(result.output.contains("Server"));
+    println!("Sequence auto-detect:\n{}", result.output);
 }
 
 // ============================================
@@ -654,11 +654,11 @@ orders.shape: sql_table
 users -> orders
 "#;
     let result = render_d2_to_tui(input, RenderOptions::default()).unwrap();
-    assert!(result.contains("Users"));
-    assert!(result.contains("Orders"));
+    assert!(result.output.contains("Users"));
+    assert!(result.output.contains("Orders"));
     // Should use double-line borders (═ and ║)
-    assert!(result.contains('═') || result.contains('╔'));
-    println!("D2 sql_table output:\n{}", result);
+    assert!(result.output.contains('═') || result.output.contains('╔'));
+    println!("D2 sql_table output:\n{}", result.output);
 }
 
 // ============================================
@@ -678,7 +678,7 @@ fn test_max_width_constraint() {
     )
     .unwrap();
     // All lines should respect max_width
-    for line in result.lines() {
+    for line in result.output.lines() {
         assert!(
             line.chars().count() <= 30,
             "Line too long: {} chars",
@@ -686,6 +686,6 @@ fn test_max_width_constraint() {
         );
     }
     // Truncated content should have ellipsis
-    assert!(result.contains('…'));
-    println!("Max width constrained output:\n{}", result);
+    assert!(result.output.contains('…'));
+    println!("Max width constrained output:\n{}", result.output);
 }

@@ -191,3 +191,12 @@ pub struct RenderOptions {
     /// Maximum width (not yet implemented)
     pub max_width: Option<usize>,
 }
+
+/// Result of rendering a diagram
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RenderResult {
+    /// The rendered diagram output
+    pub output: String,
+    /// Warnings generated during rendering (e.g., cycle detected)
+    pub warnings: Vec<String>,
+}
