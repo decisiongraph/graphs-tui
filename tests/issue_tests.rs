@@ -221,14 +221,17 @@ fn test_issue_9_edge_label_legend() {
         "Legend section should appear when label is dropped"
     );
     assert!(
-        result.output.contains("This is a very long label that will not fit"),
+        result
+            .output
+            .contains("This is a very long label that will not fit"),
         "Legend should contain the dropped label text"
     );
 
     // Should have a LabelDropped warning
-    let has_label_warning = result.warnings.iter().any(|w| {
-        matches!(w, DiagramWarning::LabelDropped { .. })
-    });
+    let has_label_warning = result
+        .warnings
+        .iter()
+        .any(|w| matches!(w, DiagramWarning::LabelDropped { .. }));
     assert!(has_label_warning, "Should have a LabelDropped warning");
 }
 
@@ -283,8 +286,5 @@ fn test_issue_9_no_legend_when_labels_fit() {
         !result.output.contains("Labels:"),
         "No legend when labels fit inline"
     );
-    assert!(
-        result.output.contains("yes"),
-        "Label should appear inline"
-    );
+    assert!(result.output.contains("yes"), "Label should appear inline");
 }

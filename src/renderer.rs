@@ -91,7 +91,11 @@ struct DroppedLabel {
 }
 
 /// Render the graph to a string
-pub fn render_graph(graph: &Graph, options: &RenderOptions, warnings: &mut Vec<DiagramWarning>) -> String {
+pub fn render_graph(
+    graph: &Graph,
+    options: &RenderOptions,
+    warnings: &mut Vec<DiagramWarning>,
+) -> String {
     let chars = if options.ascii {
         &ASCII_CHARS
     } else {

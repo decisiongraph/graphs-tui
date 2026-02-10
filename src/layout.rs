@@ -19,7 +19,10 @@ pub fn compute_layout(graph: &mut Graph) -> Vec<DiagramWarning> {
 /// Compute layout for all nodes with render options (considers max_width)
 ///
 /// Returns a list of warnings (e.g., cycle detected).
-pub fn compute_layout_with_options(graph: &mut Graph, options: &RenderOptions) -> Vec<DiagramWarning> {
+pub fn compute_layout_with_options(
+    graph: &mut Graph,
+    options: &RenderOptions,
+) -> Vec<DiagramWarning> {
     let mut warnings = Vec::new();
 
     // 1. Compute node sizes (use chars().count() for proper Unicode handling)
