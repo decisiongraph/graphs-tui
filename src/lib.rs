@@ -11,7 +11,7 @@
 //! let result = render_mermaid_to_tui(input, RenderOptions::default()).unwrap();
 //! println!("{}", result.output);
 //! for warning in &result.warnings {
-//!     eprintln!("Warning: {}", warning);
+//!     eprintln!("Warning: {warning}");
 //! }
 //! ```
 //!
@@ -77,8 +77,8 @@ mod types;
 pub use error::MermaidError;
 pub use layout::{compute_layout, compute_layout_with_options};
 pub use types::{
-    Direction, Edge, EdgeStyle, Graph, Node, NodeId, NodeShape, RenderOptions, RenderResult,
-    Subgraph,
+    DiagramWarning, Direction, Edge, EdgeStyle, Graph, Node, NodeId, NodeShape, RenderOptions,
+    RenderResult, Subgraph,
 };
 
 use d2_parser::parse_d2;
@@ -169,9 +169,9 @@ pub fn render_mermaid_to_tui(
     options: RenderOptions,
 ) -> Result<RenderResult, MermaidError> {
     let mut graph = parse_mermaid(input)?;
-    let warnings = compute_layout_with_options(&mut graph, &options);
+    let mut warnings = compute_layout_with_options(&mut graph, &options);
     Ok(RenderResult {
-        output: render_graph(&graph, &options),
+        output: render_graph(&graph, &options, &mut warnings),
         warnings,
     })
 }
@@ -190,9 +190,9 @@ pub fn render_state_diagram(
     options: RenderOptions,
 ) -> Result<RenderResult, MermaidError> {
     let mut graph = parse_state_diagram(input)?;
-    let warnings = compute_layout_with_options(&mut graph, &options);
+    let mut warnings = compute_layout_with_options(&mut graph, &options);
     Ok(RenderResult {
-        output: render_graph(&graph, &options),
+        output: render_graph(&graph, &options, &mut warnings),
         warnings,
     })
 }
@@ -227,9 +227,9 @@ pub fn render_pie_chart(input: &str, options: RenderOptions) -> Result<RenderRes
 /// * `Err(MermaidError)` - Parse or layout error
 pub fn render_d2_to_tui(input: &str, options: RenderOptions) -> Result<RenderResult, MermaidError> {
     let mut graph = parse_d2(input)?;
-    let warnings = compute_layout_with_options(&mut graph, &options);
+    let mut warnings = compute_layout_with_options(&mut graph, &options);
     Ok(RenderResult {
-        output: render_graph(&graph, &options),
+        output: render_graph(&graph, &options, &mut warnings),
         warnings,
     })
 }

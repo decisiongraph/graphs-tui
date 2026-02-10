@@ -1,5 +1,5 @@
 //! Tests for GitHub issues
-use graphs_tui::{render_d2_to_tui, render_mermaid_to_tui, RenderOptions};
+use graphs_tui::{render_d2_to_tui, render_mermaid_to_tui, DiagramWarning, RenderOptions};
 
 /// Issue #7: Warnings returned in RenderResult instead of eprintln
 #[test]
@@ -15,7 +15,7 @@ C --> A"#;
         "Cycle should produce a warning"
     );
     assert!(
-        result.warnings[0].contains("Cycle"),
+        result.warnings[0].to_string().contains("Cycle"),
         "Warning should mention cycle"
     );
     // Output should still render
@@ -140,5 +140,151 @@ A --> B"#;
     assert!(
         output.contains("My Group"),
         "Subgraph label should be intact"
+    );
+}
+
+// ── Issue #9: Deterministic layout, dropped edge labels, cycle warning UX ──
+
+/// Issue #9: Same input produces identical output across multiple runs (Mermaid)
+#[test]
+fn test_issue_9_deterministic_mermaid() {
+    let input = r#"flowchart LR
+A[Start] --> B[Middle]
+A --> C[Other]
+B --> D[End]
+C --> D"#;
+    let first = render_mermaid_to_tui(input, RenderOptions::default())
+        .unwrap()
+        .output;
+    for i in 1..20 {
+        let result = render_mermaid_to_tui(input, RenderOptions::default())
+            .unwrap()
+            .output;
+        assert_eq!(first, result, "Mermaid run {i} differs from first run");
+    }
+}
+
+/// Issue #9: Same input produces identical output across multiple runs (D2)
+#[test]
+fn test_issue_9_deterministic_d2() {
+    let input = r#"
+A -> B
+A -> C
+B -> D
+C -> D
+"#;
+    let first = render_d2_to_tui(input, RenderOptions::default())
+        .unwrap()
+        .output;
+    for i in 1..20 {
+        let result = render_d2_to_tui(input, RenderOptions::default())
+            .unwrap()
+            .output;
+        assert_eq!(first, result, "D2 run {i} differs from first run");
+    }
+}
+
+/// Issue #9: D2 cycle graph determinism (original reproducer from #9)
+#[test]
+fn test_issue_9_deterministic_d2_with_cycle() {
+    let input = r#"
+users: Users
+api: Production API
+pgbouncer: PgBouncer { shape: cylinder }
+analytics: Analytics Query
+users -> api: requests
+api -> pgbouncer: need conn
+analytics -> pgbouncer: 60 conns held
+api -> users: 503 errors
+"#;
+    let first = render_d2_to_tui(input, RenderOptions::default())
+        .unwrap()
+        .output;
+    for i in 1..20 {
+        let result = render_d2_to_tui(input, RenderOptions::default())
+            .unwrap()
+            .output;
+        assert_eq!(first, result, "D2 cycle run {i} differs");
+    }
+}
+
+/// Issue #9: Edge label dropped to legend when edge is too short
+#[test]
+fn test_issue_9_edge_label_legend() {
+    // Use very short node names with a long label to force the label to not fit
+    let input = "flowchart LR\nA -->|This is a very long label that will not fit| B";
+    let result = render_mermaid_to_tui(input, RenderOptions::default()).unwrap();
+
+    // Legend should appear
+    assert!(
+        result.output.contains("Labels:"),
+        "Legend section should appear when label is dropped"
+    );
+    assert!(
+        result.output.contains("This is a very long label that will not fit"),
+        "Legend should contain the dropped label text"
+    );
+
+    // Should have a LabelDropped warning
+    let has_label_warning = result.warnings.iter().any(|w| {
+        matches!(w, DiagramWarning::LabelDropped { .. })
+    });
+    assert!(has_label_warning, "Should have a LabelDropped warning");
+}
+
+/// Issue #9: Cycle warning includes node names
+#[test]
+fn test_issue_9_cycle_warning_nodes() {
+    let input = r#"flowchart LR
+X --> Y
+Y --> Z
+Z --> X"#;
+    let result = render_mermaid_to_tui(input, RenderOptions::default()).unwrap();
+    assert_eq!(result.warnings.len(), 1);
+
+    match &result.warnings[0] {
+        DiagramWarning::CycleDetected { nodes } => {
+            assert!(nodes.contains(&"X".to_string()), "Should contain X");
+            assert!(nodes.contains(&"Y".to_string()), "Should contain Y");
+            assert!(nodes.contains(&"Z".to_string()), "Should contain Z");
+            // Nodes should be sorted
+            assert_eq!(nodes, &["X", "Y", "Z"]);
+        }
+        other => panic!("Expected CycleDetected, got: {other:?}"),
+    }
+}
+
+/// Issue #9: DiagramWarning Display impl
+#[test]
+fn test_issue_9_warning_display() {
+    let w = DiagramWarning::CycleDetected {
+        nodes: vec!["A".into(), "B".into()],
+    };
+    assert_eq!(w.to_string(), "Cycle detected involving nodes: A, B");
+
+    let w2 = DiagramWarning::LabelDropped {
+        marker: "[1]".into(),
+        edge_from: "X".into(),
+        edge_to: "Y".into(),
+        label: "my label".into(),
+    };
+    assert_eq!(
+        w2.to_string(),
+        "Label 'my label' on edge X -> Y moved to legend as [1]"
+    );
+}
+
+/// Issue #9: No legend when labels fit inline
+#[test]
+fn test_issue_9_no_legend_when_labels_fit() {
+    let input = "flowchart LR\nA[Start] -->|yes| B[End]";
+    let result = render_mermaid_to_tui(input, RenderOptions::default()).unwrap();
+    assert!(
+        !result.output.contains("Labels:"),
+        "No legend when labels fit inline"
+    );
+    assert!(
+        result.output.contains("yes"),
+        "Label should appear inline"
     );
 }
