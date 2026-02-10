@@ -885,10 +885,7 @@ fn draw_astar_path(
             let prev = if i > 0 { Some(path[i - 1]) } else { None };
 
             let is_horizontal = pos.y == next.y;
-            let is_turn = prev.map_or(false, |p| {
-                let prev_horizontal = p.y == pos.y;
-                prev_horizontal != is_horizontal
-            });
+            let is_turn = prev.is_some_and(|p| (p.y == pos.y) != is_horizontal);
 
             if is_turn {
                 // Draw corner

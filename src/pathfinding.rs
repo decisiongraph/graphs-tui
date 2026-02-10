@@ -114,17 +114,7 @@ impl PathGrid {
 
     /// Manhattan distance heuristic with corner penalty
     fn heuristic(from: Pos, to: Pos) -> usize {
-        let dx = if from.x > to.x {
-            from.x - to.x
-        } else {
-            to.x - from.x
-        };
-        let dy = if from.y > to.y {
-            from.y - to.y
-        } else {
-            to.y - from.y
-        };
-        dx + dy
+        from.x.abs_diff(to.x) + from.y.abs_diff(to.y)
     }
 
     /// Find shortest path from start to goal using A*
