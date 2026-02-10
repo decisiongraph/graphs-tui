@@ -1,5 +1,5 @@
 use crate::error::MermaidError;
-use crate::types::{Direction, Edge, EdgeStyle, Graph, Node, NodeId, NodeShape, Subgraph};
+use crate::types::{Direction, Edge, EdgeStyle, Graph, Node, NodeId, NodeShape, NodeStyle, Subgraph};
 
 /// Parse mermaid flowchart syntax into a Graph
 pub fn parse_mermaid(input: &str) -> Result<Graph, MermaidError> {
@@ -22,6 +22,20 @@ pub fn parse_mermaid(input: &str) -> Result<Graph, MermaidError> {
 
     // Parse remaining lines
     for (i, line) in lines.iter().enumerate().skip(1) {
+        // Check for classDef: classDef name color:#hex
+        if line.to_lowercase().starts_with("classdef ") {
+            if let Some((name, style)) = parse_class_def(line) {
+                graph.style_classes.insert(name, style);
+            }
+            continue;
+        }
+
+        // Check for class assignment: class A,B,C className
+        if line.to_lowercase().starts_with("class ") {
+            parse_class_assignment(&mut graph, line);
+            continue;
+        }
+
         // Check for subgraph start
         if line.to_lowercase().starts_with("subgraph") {
             let subgraph = parse_subgraph_header(line, i + 1)?;
@@ -181,10 +195,10 @@ fn parse_line(
                         continue;
                     }
 
-                    let (id, node_label, shape) = parse_node_segment(target, line_num)?;
+                    let (id, node_label, shape, style_class) = parse_node_segment(target, line_num)?;
 
                     // Add or update node
-                    add_or_update_node(graph, &id, node_label, shape, current_subgraph);
+                    add_or_update_node(graph, &id, node_label, shape, current_subgraph, style_class);
 
                     // Add edges from all previous nodes
                     for from_id in &prev_ids {
@@ -204,8 +218,8 @@ fn parse_line(
         }
     } else {
         // Single node declaration
-        let (id, label, shape) = parse_node_segment(line, line_num)?;
-        add_or_update_node(graph, &id, label, shape, current_subgraph);
+        let (id, label, shape, style_class) = parse_node_segment(line, line_num)?;
+        add_or_update_node(graph, &id, label, shape, current_subgraph, style_class);
     }
 
     Ok(())
@@ -228,11 +242,13 @@ fn add_or_update_node(
     label: Option<String>,
     shape: NodeShape,
     current_subgraph: Option<&str>,
+    style_class: Option<String>,
 ) {
     if !graph.nodes.contains_key(id) {
         let node_label = label.unwrap_or_else(|| id.to_string());
         let mut node = Node::with_shape(id.to_string(), node_label, shape);
         node.subgraph = current_subgraph.map(|s| s.to_string());
+        node.style_class = style_class;
         graph.nodes.insert(id.to_string(), node);
 
         // Add to subgraph's node list
@@ -241,10 +257,15 @@ fn add_or_update_node(
                 sg.nodes.push(id.to_string());
             }
         }
-    } else if let Some(lbl) = label {
+    } else {
         if let Some(node) = graph.nodes.get_mut(id) {
-            node.label = lbl;
-            node.shape = shape;
+            if let Some(lbl) = label {
+                node.label = lbl;
+                node.shape = shape;
+            }
+            if style_class.is_some() {
+                node.style_class = style_class;
+            }
         }
     }
 }
@@ -282,80 +303,90 @@ fn parse_edge_label_suffix(segment: &str) -> (&str, Option<String>) {
     (segment, None)
 }
 
-/// Parse a node segment and return (id, label, shape)
+/// Parse a node segment and return (id, label, shape, style_class)
 /// Supports many mermaid shapes including hexagon, parallelogram, trapezoid
+/// Also handles inline class syntax: A:::className
 fn parse_node_segment(
     segment: &str,
     line_num: usize,
-) -> Result<(NodeId, Option<String>, NodeShape), MermaidError> {
+) -> Result<(NodeId, Option<String>, NodeShape, Option<String>), MermaidError> {
     let segment = segment.trim();
+
+    // Check for inline class syntax: A:::className or A[Label]:::className
+    let (segment, style_class) = if let Some(idx) = segment.find(":::") {
+        let class_name = segment[idx + 3..].trim().to_string();
+        let node_part = segment[..idx].trim();
+        (node_part, Some(class_name))
+    } else {
+        (segment, None)
+    };
 
     // Try each shape pattern
     // Order matters: check longer/more specific patterns first
 
     // Hexagon: {{Label}}
     if let Some(result) = try_parse_shape(segment, "{{", "}}", NodeShape::Hexagon) {
-        return validate_node_result(result, segment, line_num);
+        return validate_node_result(result, segment, line_num, style_class);
     }
 
     // Circle: ((Label))
     if let Some(result) = try_parse_shape(segment, "((", "))", NodeShape::Circle) {
-        return validate_node_result(result, segment, line_num);
+        return validate_node_result(result, segment, line_num, style_class);
     }
 
     // Cylinder/Database: [(Label)]
     if let Some(result) = try_parse_shape(segment, "[(", ")]", NodeShape::Cylinder) {
-        return validate_node_result(result, segment, line_num);
+        return validate_node_result(result, segment, line_num, style_class);
     }
 
     // Stadium: ([Label])
     if let Some(result) = try_parse_shape(segment, "([", "])", NodeShape::Stadium) {
-        return validate_node_result(result, segment, line_num);
+        return validate_node_result(result, segment, line_num, style_class);
     }
 
     // Subroutine: [[Label]]
     if let Some(result) = try_parse_shape(segment, "[[", "]]", NodeShape::Subroutine) {
-        return validate_node_result(result, segment, line_num);
+        return validate_node_result(result, segment, line_num, style_class);
     }
 
     // Trapezoid: [/Label\]
     if let Some(result) = try_parse_shape(segment, "[/", "\\]", NodeShape::Trapezoid) {
-        return validate_node_result(result, segment, line_num);
+        return validate_node_result(result, segment, line_num, style_class);
     }
 
     // Trapezoid Alt: [\Label/]
     if let Some(result) = try_parse_shape(segment, "[\\", "/]", NodeShape::TrapezoidAlt) {
-        return validate_node_result(result, segment, line_num);
+        return validate_node_result(result, segment, line_num, style_class);
     }
 
     // Parallelogram: [/Label/]
     if let Some(result) = try_parse_shape(segment, "[/", "/]", NodeShape::Parallelogram) {
-        return validate_node_result(result, segment, line_num);
+        return validate_node_result(result, segment, line_num, style_class);
     }
 
     // Parallelogram Alt: [\Label\]
     if let Some(result) = try_parse_shape(segment, "[\\", "\\]", NodeShape::ParallelogramAlt) {
-        return validate_node_result(result, segment, line_num);
+        return validate_node_result(result, segment, line_num, style_class);
     }
 
     // Diamond: {Label}
     if let Some(result) = try_parse_shape(segment, "{", "}", NodeShape::Diamond) {
-        return validate_node_result(result, segment, line_num);
+        return validate_node_result(result, segment, line_num, style_class);
     }
 
     // Rounded: (Label)
     if let Some(result) = try_parse_shape(segment, "(", ")", NodeShape::Rounded) {
-        return validate_node_result(result, segment, line_num);
+        return validate_node_result(result, segment, line_num, style_class);
     }
 
     // Rectangle: [Label]
     if let Some(result) = try_parse_shape(segment, "[", "]", NodeShape::Rectangle) {
-        return validate_node_result(result, segment, line_num);
+        return validate_node_result(result, segment, line_num, style_class);
     }
 
     // Just an ID with no shape
     if is_valid_id(segment) {
-        return Ok((segment.to_string(), None, NodeShape::Rectangle));
+        return Ok((segment.to_string(), None, NodeShape::Rectangle, style_class));
     }
 
     Err(MermaidError::ParseError {
@@ -391,7 +422,8 @@ fn validate_node_result(
     result: (String, String, NodeShape),
     segment: &str,
     line_num: usize,
-) -> Result<(NodeId, Option<String>, NodeShape), MermaidError> {
+    style_class: Option<String>,
+) -> Result<(NodeId, Option<String>, NodeShape, Option<String>), MermaidError> {
     let (id, label, shape) = result;
     if !is_valid_id(&id) {
         return Err(MermaidError::ParseError {
@@ -400,12 +432,92 @@ fn validate_node_result(
             suggestion: Some("Node ID must be alphanumeric".to_string()),
         });
     }
-    Ok((id, Some(label), shape))
+    Ok((id, Some(label), shape, style_class))
 }
 
 /// Check if string is a valid node ID (alphanumeric + underscore)
 fn is_valid_id(s: &str) -> bool {
     !s.is_empty() && s.chars().all(|c| c.is_alphanumeric() || c == '_')
+}
+
+/// Parse classDef line: classDef name color:#hex or classDef name fill:#hex,stroke:#hex
+fn parse_class_def(line: &str) -> Option<(String, NodeStyle)> {
+    let rest = line
+        .strip_prefix("classDef ")
+        .or_else(|| line.strip_prefix("classDef"))?
+        .trim();
+
+    // Split into name and properties
+    let parts: Vec<&str> = rest.splitn(2, char::is_whitespace).collect();
+    if parts.is_empty() {
+        return None;
+    }
+
+    let name = parts[0].to_string();
+    let props = parts.get(1).unwrap_or(&"");
+
+    // Parse color from properties (look for color:#hex or fill:#hex)
+    let color = extract_color(props);
+
+    Some((name, NodeStyle { color }))
+}
+
+/// Extract color value from classDef properties
+fn extract_color(props: &str) -> Option<String> {
+    for part in props.split(',') {
+        let part = part.trim();
+        if let Some(color) = part.strip_prefix("color:") {
+            return Some(hex_to_ansi(color.trim()));
+        }
+        if let Some(color) = part.strip_prefix("fill:") {
+            // Use fill as background (we'll use it for foreground in terminal)
+            return Some(hex_to_ansi(color.trim()));
+        }
+    }
+    None
+}
+
+/// Convert hex color to ANSI escape code
+fn hex_to_ansi(hex: &str) -> String {
+    let hex = hex.trim_start_matches('#');
+    if hex.len() >= 6 {
+        if let (Ok(r), Ok(g), Ok(b)) = (
+            u8::from_str_radix(&hex[0..2], 16),
+            u8::from_str_radix(&hex[2..4], 16),
+            u8::from_str_radix(&hex[4..6], 16),
+        ) {
+            // Use 24-bit ANSI color: \x1b[38;2;R;G;Bm
+            return format!("\x1b[38;2;{};{};{}m", r, g, b);
+        }
+    }
+    // Return empty string if invalid
+    String::new()
+}
+
+/// Parse class assignment: class A,B,C className
+fn parse_class_assignment(graph: &mut Graph, line: &str) {
+    let rest = line
+        .strip_prefix("class ")
+        .or_else(|| line.strip_prefix("class"))
+        .unwrap_or(line)
+        .trim();
+
+    // Split into node list and class name
+    let parts: Vec<&str> = rest.rsplitn(2, char::is_whitespace).collect();
+    if parts.len() != 2 {
+        return;
+    }
+
+    let class_name = parts[0].trim();
+    let node_list = parts[1].trim();
+
+    // Apply class to each node
+    for node_id in node_list.split(',') {
+        let node_id = node_id.trim();
+        if let Some(node) = graph.nodes.get_mut(node_id) {
+            node.style_class = Some(class_name.to_string());
+        }
+    }
 }
 
 #[cfg(test)]
@@ -716,5 +828,31 @@ mod tests {
         assert_eq!(graph.nodes.len(), 4);
         // A->C, A->D, B->C, B->D = 4 edges
         assert_eq!(graph.edges.len(), 4);
+    }
+
+    // ===== STYLE CLASS TESTS =====
+
+    #[test]
+    fn test_parse_class_def() {
+        let input = "flowchart LR\nclassDef red color:#ff0000\nA --> B";
+        let graph = parse_mermaid(input).unwrap();
+        assert!(graph.style_classes.contains_key("red"));
+        let style = graph.style_classes.get("red").unwrap();
+        assert!(style.color.is_some());
+    }
+
+    #[test]
+    fn test_parse_class_assignment() {
+        let input = "flowchart LR\nclassDef red color:#ff0000\nA --> B\nclass A red";
+        let graph = parse_mermaid(input).unwrap();
+        assert_eq!(graph.nodes.get("A").unwrap().style_class, Some("red".to_string()));
+    }
+
+    #[test]
+    fn test_parse_inline_class() {
+        let input = "flowchart LR\nA[Label]:::red --> B";
+        let graph = parse_mermaid(input).unwrap();
+        assert_eq!(graph.nodes.get("A").unwrap().style_class, Some("red".to_string()));
+        assert_eq!(graph.nodes.get("A").unwrap().label, "Label");
     }
 }

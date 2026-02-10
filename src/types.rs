@@ -121,6 +121,13 @@ impl Subgraph {
     }
 }
 
+/// ANSI color for styling
+#[derive(Debug, Clone, Default)]
+pub struct NodeStyle {
+    /// Foreground color (ANSI escape code)
+    pub color: Option<String>,
+}
+
 /// A node in the flowchart
 #[derive(Debug, Clone)]
 pub struct Node {
@@ -133,6 +140,8 @@ pub struct Node {
     pub height: usize,
     pub x: usize,
     pub y: usize,
+    /// Style class name applied to this node
+    pub style_class: Option<String>,
 }
 
 impl Node {
@@ -148,6 +157,7 @@ impl Node {
             height: 0,
             x: 0,
             y: 0,
+            style_class: None,
         }
     }
 
@@ -163,6 +173,7 @@ impl Node {
             height: 0,
             x: 0,
             y: 0,
+            style_class: None,
         }
     }
 }
@@ -183,6 +194,8 @@ pub struct Graph {
     pub nodes: HashMap<NodeId, Node>,
     pub edges: Vec<Edge>,
     pub subgraphs: Vec<Subgraph>,
+    /// Style class definitions (classDef name color:#hex)
+    pub style_classes: HashMap<String, NodeStyle>,
 }
 
 impl Graph {
@@ -193,6 +206,7 @@ impl Graph {
             nodes: HashMap::new(),
             edges: Vec::new(),
             subgraphs: Vec::new(),
+            style_classes: HashMap::new(),
         }
     }
 }
@@ -210,6 +224,8 @@ pub struct RenderOptions {
     pub padding_y: usize,
     /// Padding between text and node border (default: 1)
     pub border_padding: usize,
+    /// Enable ANSI color output (default: false)
+    pub colors: bool,
 }
 
 impl Default for RenderOptions {
@@ -220,6 +236,7 @@ impl Default for RenderOptions {
             padding_x: 8,
             padding_y: 4,
             border_padding: 1,
+            colors: false,
         }
     }
 }
