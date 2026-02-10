@@ -18,6 +18,9 @@ struct CharSet {
     rtr: char,
     rbl: char,
     rbr: char,
+    // T-junctions (for cylinder separators)
+    ml: char, // middle-left (├)
+    mr: char, // middle-right (┤)
     // Double lines for subgraphs
     dh: char,
     dv: char,
@@ -42,6 +45,8 @@ const UNICODE_CHARS: CharSet = CharSet {
     rtr: '╮',
     rbl: '╰',
     rbr: '╯',
+    ml: '├',
+    mr: '┤',
     dh: '═',
     dv: '║',
     dtl: '╔',
@@ -65,6 +70,8 @@ const ASCII_CHARS: CharSet = CharSet {
     rtr: '+',
     rbl: '+',
     rbr: '+',
+    ml: '+',
+    mr: '+',
     dh: '=',
     dv: '#',
     dtl: '#',
@@ -96,12 +103,13 @@ pub fn render_graph(graph: &Graph, options: &RenderOptions) -> String {
     // Add padding
     let mut grid = Grid::new(max_x + 2, max_y + 2);
 
-    // 1. Render subgraphs first (background)
+    // 1. Render subgraphs first (background) and protect their borders
     for sg in &graph.subgraphs {
         draw_subgraph(&mut grid, sg, chars);
+        protect_subgraph_borders(&mut grid, sg);
     }
 
-    // 2. Render nodes
+    // 2. Render nodes (set_if_empty respects subgraph protection, then protect node area)
     for node in graph.nodes.values() {
         draw_node(&mut grid, node, chars);
     }
@@ -185,11 +193,39 @@ fn draw_subgraph(grid: &mut Grid, sg: &Subgraph, chars: &CharSet) {
     }
 }
 
+/// Protect subgraph border cells so nodes/edges can't overwrite them
+fn protect_subgraph_borders(grid: &mut Grid, sg: &Subgraph) {
+    if sg.width == 0 || sg.height == 0 {
+        return;
+    }
+
+    let x = sg.x;
+    let y = sg.y;
+    let width = sg.width;
+    let height = sg.height;
+
+    // Protect corners
+    grid.mark_protected(x, y);
+    grid.mark_protected(x + width - 1, y);
+    grid.mark_protected(x, y + height - 1);
+    grid.mark_protected(x + width - 1, y + height - 1);
+
+    // Protect horizontal lines (top and bottom)
+    for i in 1..width - 1 {
+        grid.mark_protected(x + i, y);
+        grid.mark_protected(x + i, y + height - 1);
+    }
+
+    // Protect vertical lines (left and right)
+    for i in 1..height - 1 {
+        grid.mark_protected(x, y + i);
+        grid.mark_protected(x + width - 1, y + i);
+    }
+}
+
 /// Draw a node with its shape
 fn draw_node(grid: &mut Grid, node: &Node, chars: &CharSet) {
-    // First, protect the entire node bounding box from edge overwriting
-    protect_node_area(grid, node);
-
+    // Draw first (set_if_empty respects subgraph protection)
     match node.shape {
         NodeShape::Rectangle => draw_rectangle(grid, node, chars),
         NodeShape::Rounded => draw_rounded(grid, node, chars),
@@ -205,6 +241,9 @@ fn draw_node(grid: &mut Grid, node: &Node, chars: &CharSet) {
         NodeShape::TrapezoidAlt => draw_trapezoid(grid, node, chars, true),
         NodeShape::Table => draw_table(grid, node, chars),
     }
+
+    // Then protect the node bounding box from edge overwriting
+    protect_node_area(grid, node);
 }
 
 /// Protect the entire node bounding box from being overwritten by edges
@@ -224,21 +263,21 @@ fn draw_rectangle(grid: &mut Grid, node: &Node, chars: &CharSet) {
     let height = node.height;
 
     // Corners
-    grid.set(x, y, chars.tl);
-    grid.set(x + width - 1, y, chars.tr);
-    grid.set(x, y + height - 1, chars.bl);
-    grid.set(x + width - 1, y + height - 1, chars.br);
+    grid.set_if_empty(x, y, chars.tl);
+    grid.set_if_empty(x + width - 1, y, chars.tr);
+    grid.set_if_empty(x, y + height - 1, chars.bl);
+    grid.set_if_empty(x + width - 1, y + height - 1, chars.br);
 
     // Horizontal lines
     for i in 1..width - 1 {
-        grid.set(x + i, y, chars.h);
-        grid.set(x + i, y + height - 1, chars.h);
+        grid.set_if_empty(x + i, y, chars.h);
+        grid.set_if_empty(x + i, y + height - 1, chars.h);
     }
 
     // Vertical lines
     for i in 1..height - 1 {
-        grid.set(x, y + i, chars.v);
-        grid.set(x + width - 1, y + i, chars.v);
+        grid.set_if_empty(x, y + i, chars.v);
+        grid.set_if_empty(x + width - 1, y + i, chars.v);
     }
 
     // Label (centered)
@@ -253,21 +292,21 @@ fn draw_rounded(grid: &mut Grid, node: &Node, chars: &CharSet) {
     let height = node.height;
 
     // Rounded corners
-    grid.set(x, y, chars.rtl);
-    grid.set(x + width - 1, y, chars.rtr);
-    grid.set(x, y + height - 1, chars.rbl);
-    grid.set(x + width - 1, y + height - 1, chars.rbr);
+    grid.set_if_empty(x, y, chars.rtl);
+    grid.set_if_empty(x + width - 1, y, chars.rtr);
+    grid.set_if_empty(x, y + height - 1, chars.rbl);
+    grid.set_if_empty(x + width - 1, y + height - 1, chars.rbr);
 
     // Horizontal lines
     for i in 1..width - 1 {
-        grid.set(x + i, y, chars.h);
-        grid.set(x + i, y + height - 1, chars.h);
+        grid.set_if_empty(x + i, y, chars.h);
+        grid.set_if_empty(x + i, y + height - 1, chars.h);
     }
 
     // Vertical lines
     for i in 1..height - 1 {
-        grid.set(x, y + i, chars.v);
-        grid.set(x + width - 1, y + i, chars.v);
+        grid.set_if_empty(x, y + i, chars.v);
+        grid.set_if_empty(x + width - 1, y + i, chars.v);
     }
 
     draw_label(grid, node);
@@ -281,29 +320,29 @@ fn draw_circle(grid: &mut Grid, node: &Node, chars: &CharSet) {
     let height = node.height;
 
     // Use rounded corners and parentheses for circle effect
-    grid.set(x, y, '(');
-    grid.set(x + width - 1, y, ')');
-    grid.set(x, y + height - 1, '(');
-    grid.set(x + width - 1, y + height - 1, ')');
+    grid.set_if_empty(x, y, '(');
+    grid.set_if_empty(x + width - 1, y, ')');
+    grid.set_if_empty(x, y + height - 1, '(');
+    grid.set_if_empty(x + width - 1, y + height - 1, ')');
 
     // Top/bottom with curves
     for i in 1..width - 1 {
         if i == 1 {
-            grid.set(x + i, y, chars.rtl);
-            grid.set(x + i, y + height - 1, chars.rbl);
+            grid.set_if_empty(x + i, y, chars.rtl);
+            grid.set_if_empty(x + i, y + height - 1, chars.rbl);
         } else if i == width - 2 {
-            grid.set(x + i, y, chars.rtr);
-            grid.set(x + i, y + height - 1, chars.rbr);
+            grid.set_if_empty(x + i, y, chars.rtr);
+            grid.set_if_empty(x + i, y + height - 1, chars.rbr);
         } else {
-            grid.set(x + i, y, chars.h);
-            grid.set(x + i, y + height - 1, chars.h);
+            grid.set_if_empty(x + i, y, chars.h);
+            grid.set_if_empty(x + i, y + height - 1, chars.h);
         }
     }
 
     // Sides
     for i in 1..height - 1 {
-        grid.set(x, y + i, '(');
-        grid.set(x + width - 1, y + i, ')');
+        grid.set_if_empty(x, y + i, '(');
+        grid.set_if_empty(x + width - 1, y + i, ')');
     }
 
     draw_label(grid, node);
@@ -320,73 +359,80 @@ fn draw_diamond(grid: &mut Grid, node: &Node, chars: &CharSet) {
     let mid_x = width / 2;
 
     // Top point
-    grid.set(x + mid_x, y, '/');
+    grid.set_if_empty(x + mid_x, y, '/');
     if mid_x + 1 < width {
-        grid.set(x + mid_x + 1, y, '\\');
+        grid.set_if_empty(x + mid_x + 1, y, '\\');
     }
 
     // Bottom point
-    grid.set(x + mid_x, y + height - 1, '\\');
+    grid.set_if_empty(x + mid_x, y + height - 1, '\\');
     if mid_x + 1 < width {
-        grid.set(x + mid_x + 1, y + height - 1, '/');
+        grid.set_if_empty(x + mid_x + 1, y + height - 1, '/');
     }
 
     // Left and right edges
     for i in 1..height - 1 {
-        grid.set(x, y + i, '<');
-        grid.set(x + width - 1, y + i, '>');
+        grid.set_if_empty(x, y + i, '<');
+        grid.set_if_empty(x + width - 1, y + i, '>');
     }
 
     // Fill middle row with horizontal line
     for i in 1..width - 1 {
-        grid.set(x + i, y + 1, chars.h);
+        grid.set_if_empty(x + i, y + 1, chars.h);
     }
 
     draw_label(grid, node);
 }
 
 /// Draw a cylinder/database node [(Label)]
+/// 5-row layout:
+///   ╭───╮  row 0: rtl + h + rtr
+///   ├───┤  row 1: ml + h + mr
+///   │ X │  row 2: v + label + v
+///   ├───┤  row 3: ml + h + mr
+///   ╰───╯  row 4: rbl + h + rbr
 fn draw_cylinder(grid: &mut Grid, node: &Node, chars: &CharSet) {
     let x = node.x;
     let y = node.y;
     let width = node.width;
     let height = node.height;
 
-    // Top ellipse
-    grid.set(x, y, chars.rtl);
-    grid.set(x + width - 1, y, chars.rtr);
+    // Row 0: top rounded
+    grid.set_if_empty(x, y, chars.rtl);
+    grid.set_if_empty(x + width - 1, y, chars.rtr);
     for i in 1..width - 1 {
-        grid.set(x + i, y, chars.h);
+        grid.set_if_empty(x + i, y, chars.h);
     }
 
-    // Second row (bottom of top ellipse)
-    if height > 2 {
-        grid.set(x, y + 1, chars.rbl);
-        grid.set(x + width - 1, y + 1, chars.rbr);
-        for i in 1..width - 1 {
-            grid.set(x + i, y + 1, chars.h);
-        }
-    }
-
-    // Vertical sides
-    for i in 2..height - 1 {
-        grid.set(x, y + i, chars.v);
-        grid.set(x + width - 1, y + i, chars.v);
-    }
-
-    // Bottom ellipse
-    grid.set(x, y + height - 1, chars.rbl);
-    grid.set(x + width - 1, y + height - 1, chars.rbr);
+    // Row 1: top separator
+    grid.set_if_empty(x, y + 1, chars.ml);
+    grid.set_if_empty(x + width - 1, y + 1, chars.mr);
     for i in 1..width - 1 {
-        grid.set(x + i, y + height - 1, chars.h);
+        grid.set_if_empty(x + i, y + 1, chars.h);
     }
 
-    // Label in center
-    let label_x = x + (width.saturating_sub(node.label.len())) / 2;
-    let label_y = y + height / 2;
-    for (i, c) in node.label.chars().enumerate() {
-        grid.set(label_x + i, label_y, c);
+    // Middle rows: vertical sides
+    for i in 2..height - 2 {
+        grid.set_if_empty(x, y + i, chars.v);
+        grid.set_if_empty(x + width - 1, y + i, chars.v);
     }
+
+    // Row height-2: bottom separator
+    grid.set_if_empty(x, y + height - 2, chars.ml);
+    grid.set_if_empty(x + width - 1, y + height - 2, chars.mr);
+    for i in 1..width - 1 {
+        grid.set_if_empty(x + i, y + height - 2, chars.h);
+    }
+
+    // Row height-1: bottom rounded
+    grid.set_if_empty(x, y + height - 1, chars.rbl);
+    grid.set_if_empty(x + width - 1, y + height - 1, chars.rbr);
+    for i in 1..width - 1 {
+        grid.set_if_empty(x + i, y + height - 1, chars.h);
+    }
+
+    // Label centered at midpoint
+    draw_label(grid, node);
 }
 
 /// Draw a stadium node ([Label])
@@ -397,21 +443,21 @@ fn draw_stadium(grid: &mut Grid, node: &Node, chars: &CharSet) {
     let height = node.height;
 
     // Stadium is like rounded but with more pronounced curves
-    grid.set(x, y, '(');
-    grid.set(x + width - 1, y, ')');
-    grid.set(x, y + height - 1, '(');
-    grid.set(x + width - 1, y + height - 1, ')');
+    grid.set_if_empty(x, y, '(');
+    grid.set_if_empty(x + width - 1, y, ')');
+    grid.set_if_empty(x, y + height - 1, '(');
+    grid.set_if_empty(x + width - 1, y + height - 1, ')');
 
     // Horizontal lines
     for i in 1..width - 1 {
-        grid.set(x + i, y, chars.h);
-        grid.set(x + i, y + height - 1, chars.h);
+        grid.set_if_empty(x + i, y, chars.h);
+        grid.set_if_empty(x + i, y + height - 1, chars.h);
     }
 
     // Curved sides
     for i in 1..height - 1 {
-        grid.set(x, y + i, '(');
-        grid.set(x + width - 1, y + i, ')');
+        grid.set_if_empty(x, y + i, '(');
+        grid.set_if_empty(x + width - 1, y + i, ')');
     }
 
     draw_label(grid, node);
@@ -425,28 +471,28 @@ fn draw_subroutine(grid: &mut Grid, node: &Node, chars: &CharSet) {
     let height = node.height;
 
     // Double vertical lines on sides
-    grid.set(x, y, chars.tl);
-    grid.set(x + 1, y, chars.tl);
-    grid.set(x + width - 1, y, chars.tr);
-    grid.set(x + width - 2, y, chars.tr);
+    grid.set_if_empty(x, y, chars.tl);
+    grid.set_if_empty(x + 1, y, chars.tl);
+    grid.set_if_empty(x + width - 1, y, chars.tr);
+    grid.set_if_empty(x + width - 2, y, chars.tr);
 
-    grid.set(x, y + height - 1, chars.bl);
-    grid.set(x + 1, y + height - 1, chars.bl);
-    grid.set(x + width - 1, y + height - 1, chars.br);
-    grid.set(x + width - 2, y + height - 1, chars.br);
+    grid.set_if_empty(x, y + height - 1, chars.bl);
+    grid.set_if_empty(x + 1, y + height - 1, chars.bl);
+    grid.set_if_empty(x + width - 1, y + height - 1, chars.br);
+    grid.set_if_empty(x + width - 2, y + height - 1, chars.br);
 
     // Horizontal lines
     for i in 2..width - 2 {
-        grid.set(x + i, y, chars.h);
-        grid.set(x + i, y + height - 1, chars.h);
+        grid.set_if_empty(x + i, y, chars.h);
+        grid.set_if_empty(x + i, y + height - 1, chars.h);
     }
 
     // Double vertical sides
     for i in 1..height - 1 {
-        grid.set(x, y + i, chars.v);
-        grid.set(x + 1, y + i, chars.v);
-        grid.set(x + width - 1, y + i, chars.v);
-        grid.set(x + width - 2, y + i, chars.v);
+        grid.set_if_empty(x, y + i, chars.v);
+        grid.set_if_empty(x + 1, y + i, chars.v);
+        grid.set_if_empty(x + width - 1, y + i, chars.v);
+        grid.set_if_empty(x + width - 2, y + i, chars.v);
     }
 
     draw_label(grid, node);
@@ -460,23 +506,23 @@ fn draw_hexagon(grid: &mut Grid, node: &Node, chars: &CharSet) {
     let height = node.height;
 
     // Top edge with angled corners
-    grid.set(x, y, '/');
-    grid.set(x + width - 1, y, '\\');
+    grid.set_if_empty(x, y, '/');
+    grid.set_if_empty(x + width - 1, y, '\\');
     for i in 1..width - 1 {
-        grid.set(x + i, y, chars.h);
+        grid.set_if_empty(x + i, y, chars.h);
     }
 
     // Bottom edge with angled corners
-    grid.set(x, y + height - 1, '\\');
-    grid.set(x + width - 1, y + height - 1, '/');
+    grid.set_if_empty(x, y + height - 1, '\\');
+    grid.set_if_empty(x + width - 1, y + height - 1, '/');
     for i in 1..width - 1 {
-        grid.set(x + i, y + height - 1, chars.h);
+        grid.set_if_empty(x + i, y + height - 1, chars.h);
     }
 
     // Sides (angled look with < and >)
     for i in 1..height - 1 {
-        grid.set(x, y + i, '<');
-        grid.set(x + width - 1, y + i, '>');
+        grid.set_if_empty(x, y + i, '<');
+        grid.set_if_empty(x + width - 1, y + i, '>');
     }
 
     draw_label(grid, node);
@@ -496,21 +542,21 @@ fn draw_parallelogram(grid: &mut Grid, node: &Node, chars: &CharSet, reverse: bo
     };
 
     // Corners
-    grid.set(x, y, top_left);
-    grid.set(x + width - 1, y, top_right);
-    grid.set(x, y + height - 1, bot_left);
-    grid.set(x + width - 1, y + height - 1, bot_right);
+    grid.set_if_empty(x, y, top_left);
+    grid.set_if_empty(x + width - 1, y, top_right);
+    grid.set_if_empty(x, y + height - 1, bot_left);
+    grid.set_if_empty(x + width - 1, y + height - 1, bot_right);
 
     // Horizontal lines
     for i in 1..width - 1 {
-        grid.set(x + i, y, chars.h);
-        grid.set(x + i, y + height - 1, chars.h);
+        grid.set_if_empty(x + i, y, chars.h);
+        grid.set_if_empty(x + i, y + height - 1, chars.h);
     }
 
     // Vertical lines (slanted appearance)
     for i in 1..height - 1 {
-        grid.set(x, y + i, if reverse { '\\' } else { '/' });
-        grid.set(x + width - 1, y + i, if reverse { '\\' } else { '/' });
+        grid.set_if_empty(x, y + i, if reverse { '\\' } else { '/' });
+        grid.set_if_empty(x + width - 1, y + i, if reverse { '\\' } else { '/' });
     }
 
     draw_label(grid, node);
@@ -530,23 +576,23 @@ fn draw_trapezoid(grid: &mut Grid, node: &Node, chars: &CharSet, reverse: bool) 
     };
 
     // Corners
-    grid.set(x, y, top_left);
-    grid.set(x + width - 1, y, top_right);
-    grid.set(x, y + height - 1, bot_left);
-    grid.set(x + width - 1, y + height - 1, bot_right);
+    grid.set_if_empty(x, y, top_left);
+    grid.set_if_empty(x + width - 1, y, top_right);
+    grid.set_if_empty(x, y + height - 1, bot_left);
+    grid.set_if_empty(x + width - 1, y + height - 1, bot_right);
 
     // Horizontal lines
     for i in 1..width - 1 {
-        grid.set(x + i, y, chars.h);
-        grid.set(x + i, y + height - 1, chars.h);
+        grid.set_if_empty(x + i, y, chars.h);
+        grid.set_if_empty(x + i, y + height - 1, chars.h);
     }
 
     // Vertical lines (slanted on one end)
     for i in 1..height - 1 {
         let left_char = if reverse { '\\' } else { chars.v };
         let right_char = if reverse { '/' } else { chars.v };
-        grid.set(x, y + i, left_char);
-        grid.set(x + width - 1, y + i, right_char);
+        grid.set_if_empty(x, y + i, left_char);
+        grid.set_if_empty(x + width - 1, y + i, right_char);
     }
 
     draw_label(grid, node);
@@ -560,21 +606,21 @@ fn draw_table(grid: &mut Grid, node: &Node, chars: &CharSet) {
     let height = node.height;
 
     // Double-line corners (like subgraph)
-    grid.set(x, y, chars.dtl);
-    grid.set(x + width - 1, y, chars.dtr);
-    grid.set(x, y + height - 1, chars.dbl);
-    grid.set(x + width - 1, y + height - 1, chars.dbr);
+    grid.set_if_empty(x, y, chars.dtl);
+    grid.set_if_empty(x + width - 1, y, chars.dtr);
+    grid.set_if_empty(x, y + height - 1, chars.dbl);
+    grid.set_if_empty(x + width - 1, y + height - 1, chars.dbr);
 
     // Double horizontal lines
     for i in 1..width - 1 {
-        grid.set(x + i, y, chars.dh);
-        grid.set(x + i, y + height - 1, chars.dh);
+        grid.set_if_empty(x + i, y, chars.dh);
+        grid.set_if_empty(x + i, y + height - 1, chars.dh);
     }
 
     // Double vertical lines
     for i in 1..height - 1 {
-        grid.set(x, y + i, chars.dv);
-        grid.set(x + width - 1, y + i, chars.dv);
+        grid.set_if_empty(x, y + i, chars.dv);
+        grid.set_if_empty(x + width - 1, y + i, chars.dv);
     }
 
     draw_label(grid, node);
@@ -583,9 +629,9 @@ fn draw_table(grid: &mut Grid, node: &Node, chars: &CharSet) {
 /// Draw the label centered in the node
 fn draw_label(grid: &mut Grid, node: &Node) {
     let label_x = node.x + (node.width.saturating_sub(node.label.len())) / 2;
-    let label_y = node.y + 1;
+    let label_y = node.y + node.height / 2;
     for (i, c) in node.label.chars().enumerate() {
-        grid.set(label_x + i, label_y, c);
+        grid.set_if_empty(label_x + i, label_y, c);
     }
 }
 
@@ -628,16 +674,16 @@ fn draw_edge(
     let (start_x, start_y, end_x, end_y, arrow_char) = match direction {
         Direction::LR => (
             from.x + from.width,
-            from.y + 1,
+            from.y + from.height / 2,
             to.x,
-            to.y + 1,
+            to.y + to.height / 2,
             if has_arrow { chars.arr_r } else { h_char },
         ),
         Direction::RL => (
             from.x,
-            from.y + 1,
+            from.y + from.height / 2,
             to.x + to.width,
-            to.y + 1,
+            to.y + to.height / 2,
             if has_arrow { chars.arr_l } else { h_char },
         ),
         Direction::TB => (

@@ -1,4 +1,4 @@
-use crate::types::{Direction, Graph, NodeId, RenderOptions};
+use crate::types::{Direction, Graph, NodeId, NodeShape, RenderOptions};
 use std::collections::{HashMap, VecDeque};
 
 const MIN_NODE_WIDTH: usize = 5;
@@ -26,6 +26,9 @@ pub fn compute_layout_with_options(graph: &mut Graph, options: &RenderOptions) -
     for node in graph.nodes.values_mut() {
         node.width = (node.label.chars().count() + 2).max(MIN_NODE_WIDTH);
         node.height = NODE_HEIGHT;
+        if node.shape == NodeShape::Cylinder {
+            node.height = 5;
+        }
     }
 
     // 2. Topological layering
