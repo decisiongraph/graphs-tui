@@ -68,6 +68,7 @@ mod error;
 mod grid;
 mod layout;
 mod parser;
+mod pathfinding;
 mod pie_parser;
 mod renderer;
 mod seq_parser;
@@ -78,10 +79,10 @@ pub use error::MermaidError;
 pub use layout::{compute_layout, compute_layout_with_options};
 pub use types::{
     DiagramWarning, Direction, Edge, EdgeStyle, Graph, Node, NodeId, NodeShape, RenderOptions,
-    RenderResult, Subgraph,
+    RenderResult, Subgraph, TableField,
 };
 
-use d2_parser::parse_d2;
+use d2_parser::{parse_d2, D2ParseResult};
 use parser::parse_mermaid;
 use pie_parser::{parse_pie_chart as parse_pie, render_pie_chart as render_pie};
 use renderer::render_graph;
@@ -194,8 +195,9 @@ pub fn render(
 pub fn check(lang: &str, code: &str) -> Result<Vec<DiagramWarning>, MermaidError> {
     match lang.to_lowercase().as_str() {
         "d2" => {
-            let mut graph = parse_d2(code)?;
-            Ok(compute_layout(&mut graph))
+            let D2ParseResult { mut graph, mut warnings } = parse_d2(code)?;
+            warnings.extend(compute_layout(&mut graph));
+            Ok(warnings)
         }
         _ => check_mermaid(code),
     }
@@ -206,8 +208,9 @@ fn check_mermaid(code: &str) -> Result<Vec<DiagramWarning>, MermaidError> {
     let format = detect_format(code);
     match format {
         DiagramFormat::D2 => {
-            let mut graph = parse_d2(code)?;
-            Ok(compute_layout(&mut graph))
+            let D2ParseResult { mut graph, mut warnings } = parse_d2(code)?;
+            warnings.extend(compute_layout(&mut graph));
+            Ok(warnings)
         }
         DiagramFormat::Mermaid => {
             let mut graph = parse_mermaid(code)?;
@@ -318,8 +321,8 @@ pub fn render_pie_chart(input: &str, options: RenderOptions) -> Result<RenderRes
 /// * `Ok(RenderResult)` - Rendered diagram with any warnings
 /// * `Err(MermaidError)` - Parse or layout error
 pub fn render_d2_to_tui(input: &str, options: RenderOptions) -> Result<RenderResult, MermaidError> {
-    let mut graph = parse_d2(input)?;
-    let mut warnings = compute_layout_with_options(&mut graph, &options);
+    let D2ParseResult { mut graph, mut warnings } = parse_d2(input)?;
+    warnings.extend(compute_layout_with_options(&mut graph, &options));
     Ok(RenderResult {
         output: render_graph(&graph, &options, &mut warnings),
         warnings,

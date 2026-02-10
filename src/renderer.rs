@@ -1,4 +1,5 @@
-use crate::grid::Grid;
+use crate::grid::{Grid, JunctionChars};
+use crate::pathfinding::{PathGrid, Pos};
 use crate::types::{
     DiagramWarning, Direction, Edge, EdgeStyle, Graph, Node, NodeShape, RenderOptions, Subgraph,
 };
@@ -30,6 +31,10 @@ struct CharSet {
     dtr: char,
     dbl: char,
     dbr: char,
+    // Junction characters for overlapping lines
+    cross: char, // cross (┼)
+    t_up: char,  // T pointing up (┴)
+    t_down: char, // T pointing down (┬)
 }
 
 const UNICODE_CHARS: CharSet = CharSet {
@@ -55,6 +60,9 @@ const UNICODE_CHARS: CharSet = CharSet {
     dtr: '╗',
     dbl: '╚',
     dbr: '╝',
+    cross: '┼',
+    t_up: '┴',
+    t_down: '┬',
 };
 
 const ASCII_CHARS: CharSet = CharSet {
@@ -80,7 +88,49 @@ const ASCII_CHARS: CharSet = CharSet {
     dtr: '#',
     dbl: '#',
     dbr: '#',
+    cross: '+',
+    t_up: '+',
+    t_down: '+',
 };
+
+impl CharSet {
+    /// Convert to JunctionChars for grid line merging
+    fn to_junction_chars(&self) -> JunctionChars {
+        JunctionChars {
+            cross: self.cross,
+            t_up: self.t_up,
+            t_down: self.t_down,
+            ml: self.ml,
+            mr: self.mr,
+        }
+    }
+}
+
+/// Build a PathGrid with all nodes marked as obstacles
+fn build_path_grid(graph: &Graph, width: usize, height: usize) -> PathGrid {
+    let mut path_grid = PathGrid::new(width, height);
+
+    // Mark all nodes as obstacles
+    for node in graph.nodes.values() {
+        path_grid.block_rect(node.x, node.y, node.width, node.height);
+    }
+
+    // Mark subgraph borders as obstacles too
+    for sg in &graph.subgraphs {
+        if sg.width > 0 && sg.height > 0 {
+            // Top border
+            path_grid.block_rect(sg.x, sg.y, sg.width, 1);
+            // Bottom border
+            path_grid.block_rect(sg.x, sg.y + sg.height.saturating_sub(1), sg.width, 1);
+            // Left border
+            path_grid.block_rect(sg.x, sg.y, 1, sg.height);
+            // Right border
+            path_grid.block_rect(sg.x + sg.width.saturating_sub(1), sg.y, 1, sg.height);
+        }
+    }
+
+    path_grid
+}
 
 /// A label that couldn't be rendered inline on an edge
 struct DroppedLabel {
@@ -133,7 +183,10 @@ pub fn render_graph(
         draw_node(&mut grid, node, chars);
     }
 
-    // 3. Render edges, tracking dropped labels
+    // 3. Build pathfinding grid for A* edge routing
+    let path_grid = build_path_grid(graph, grid.width, grid.height);
+
+    // 4. Render edges, tracking dropped labels
     let mut dropped_labels: Vec<DroppedLabel> = Vec::new();
     let mut next_marker: usize = 1;
 
@@ -141,6 +194,7 @@ pub fn render_graph(
         if let (Some(from), Some(to)) = (graph.nodes.get(&edge.from), graph.nodes.get(&edge.to)) {
             draw_edge(
                 &mut grid,
+                &path_grid,
                 from,
                 to,
                 edge,
@@ -638,32 +692,119 @@ fn draw_trapezoid(grid: &mut Grid, node: &Node, chars: &CharSet, reverse: bool) 
     draw_label(grid, node);
 }
 
-/// Draw a table node (D2 sql_table) - uses double borders
+/// Draw a table node (D2 sql_table) - uses double borders with field rows
 fn draw_table(grid: &mut Grid, node: &Node, chars: &CharSet) {
     let x = node.x;
     let y = node.y;
     let width = node.width;
     let height = node.height;
 
-    // Double-line corners (like subgraph)
+    if node.fields.is_empty() {
+        // Simple table without fields (original behavior)
+        grid.set_if_empty(x, y, chars.dtl);
+        grid.set_if_empty(x + width - 1, y, chars.dtr);
+        grid.set_if_empty(x, y + height - 1, chars.dbl);
+        grid.set_if_empty(x + width - 1, y + height - 1, chars.dbr);
+
+        for i in 1..width - 1 {
+            grid.set_if_empty(x + i, y, chars.dh);
+            grid.set_if_empty(x + i, y + height - 1, chars.dh);
+        }
+
+        for i in 1..height - 1 {
+            grid.set_if_empty(x, y + i, chars.dv);
+            grid.set_if_empty(x + width - 1, y + i, chars.dv);
+        }
+
+        draw_label(grid, node);
+        return;
+    }
+
+    // Table with fields layout:
+    // Row 0: ╔═══════════╗  top border
+    // Row 1: ║   label   ║  label row
+    // Row 2: ╠═══════════╣  separator (using ╠/╣ for T-junctions)
+    // Row 3: ║ field 1   ║  field rows...
+    // Row N: ╚═══════════╝  bottom border
+
+    // Top border
     grid.set_if_empty(x, y, chars.dtl);
     grid.set_if_empty(x + width - 1, y, chars.dtr);
-    grid.set_if_empty(x, y + height - 1, chars.dbl);
-    grid.set_if_empty(x + width - 1, y + height - 1, chars.dbr);
-
-    // Double horizontal lines
     for i in 1..width - 1 {
         grid.set_if_empty(x + i, y, chars.dh);
-        grid.set_if_empty(x + i, y + height - 1, chars.dh);
     }
 
-    // Double vertical lines
-    for i in 1..height - 1 {
-        grid.set_if_empty(x, y + i, chars.dv);
-        grid.set_if_empty(x + width - 1, y + i, chars.dv);
+    // Label row (row 1)
+    grid.set_if_empty(x, y + 1, chars.dv);
+    grid.set_if_empty(x + width - 1, y + 1, chars.dv);
+    // Center label
+    let label_x = x + (width.saturating_sub(node.label.chars().count())) / 2;
+    for (i, c) in node.label.chars().enumerate() {
+        grid.set_if_empty(label_x + i, y + 1, c);
     }
 
-    draw_label(grid, node);
+    // Separator (row 2)
+    grid.set_if_empty(x, y + 2, chars.ml);
+    grid.set_if_empty(x + width - 1, y + 2, chars.mr);
+    for i in 1..width - 1 {
+        grid.set_if_empty(x + i, y + 2, chars.h);
+    }
+
+    // Field rows
+    for (fi, field) in node.fields.iter().enumerate() {
+        let row_y = y + 3 + fi;
+        grid.set_if_empty(x, row_y, chars.v);
+        grid.set_if_empty(x + width - 1, row_y, chars.v);
+
+        // Format field text
+        let field_text = format_field_text(field, width.saturating_sub(4));
+        let text_x = x + 2; // 1 for border + 1 padding
+        for (i, c) in field_text.chars().enumerate() {
+            if text_x + i < x + width - 1 {
+                grid.set_if_empty(text_x + i, row_y, c);
+            }
+        }
+    }
+
+    // Bottom border
+    let bot_y = y + height - 1;
+    grid.set_if_empty(x, bot_y, chars.bl);
+    grid.set_if_empty(x + width - 1, bot_y, chars.br);
+    for i in 1..width - 1 {
+        grid.set_if_empty(x + i, bot_y, chars.h);
+    }
+}
+
+/// Format a table field for display
+fn format_field_text(field: &crate::types::TableField, max_width: usize) -> String {
+    let mut text = field.name.clone();
+    if let Some(ref ti) = field.type_info {
+        text.push_str(": ");
+        text.push_str(ti);
+    }
+    if let Some(ref c) = field.constraint {
+        let abbrev = match c.as_str() {
+            "primary_key" => " [PK]",
+            "foreign_key" => " [FK]",
+            "unique" => " [UQ]",
+            "not_null" => " [NN]",
+            other => {
+                // Can't use format! in const context; just append inline
+                text.push_str(" [");
+                text.push_str(other);
+                text.push(']');
+                if text.chars().count() > max_width {
+                    text.truncate(max_width);
+                }
+                return text;
+            }
+        };
+        text.push_str(abbrev);
+    }
+    if text.chars().count() > max_width {
+        text.truncate(max_width);
+    }
+    text
 }
 
 /// Draw the label centered in the node
@@ -698,9 +839,81 @@ fn style_has_arrow(style: EdgeStyle) -> bool {
     )
 }
 
-/// Draw an edge between two nodes
+/// Draw a path found by A* pathfinding
+fn draw_astar_path(
+    grid: &mut Grid,
+    path: &[Pos],
+    h_char: char,
+    v_char: char,
+    arrow_char: char,
+    chars: &CharSet,
+) {
+    if path.is_empty() {
+        return;
+    }
+
+    let jchars = chars.to_junction_chars();
+
+    for i in 0..path.len() {
+        let pos = path[i];
+
+        if i == path.len() - 1 {
+            // Last position - draw arrow
+            grid.set_if_empty(pos.x, pos.y, arrow_char);
+        } else {
+            // Determine direction
+            let next = path[i + 1];
+            let prev = if i > 0 { Some(path[i - 1]) } else { None };
+
+            let is_horizontal = pos.y == next.y;
+            let is_turn = prev.map_or(false, |p| {
+                let prev_horizontal = p.y == pos.y;
+                prev_horizontal != is_horizontal
+            });
+
+            if is_turn {
+                // Draw corner
+                let corner = determine_corner(prev.unwrap(), pos, next, chars);
+                grid.set_if_empty(pos.x, pos.y, corner);
+            } else if is_horizontal {
+                grid.set_line_with_merge(pos.x, pos.y, h_char, true, &jchars);
+            } else {
+                grid.set_line_with_merge(pos.x, pos.y, v_char, false, &jchars);
+            }
+        }
+    }
+}
+
+/// Determine the corner character based on path direction
+fn determine_corner(prev: Pos, curr: Pos, next: Pos, chars: &CharSet) -> char {
+    let from_left = prev.x < curr.x;
+    let from_right = prev.x > curr.x;
+    let from_above = prev.y < curr.y;
+    let from_below = prev.y > curr.y;
+
+    let to_right = next.x > curr.x;
+    let to_left = next.x < curr.x;
+    let to_below = next.y > curr.y;
+    let to_above = next.y < curr.y;
+
+    // Determine corner type
+    if (from_left && to_below) || (from_above && to_right) {
+        chars.tr // ┐ or coming from left going down, or from above going right
+    } else if (from_right && to_below) || (from_above && to_left) {
+        chars.tl // ┌
+    } else if (from_left && to_above) || (from_below && to_right) {
+        chars.br // ┘
+    } else if (from_right && to_above) || (from_below && to_left) {
+        chars.bl // └
+    } else {
+        chars.cross // Default to cross if unclear
+    }
+}
+
+/// Draw an edge between two nodes using A* pathfinding when beneficial
 fn draw_edge(
     grid: &mut Grid,
+    path_grid: &PathGrid,
     from: &Node,
     to: &Node,
     edge: &Edge,
@@ -744,6 +957,41 @@ fn draw_edge(
         ),
     };
 
+    // Try A* pathfinding for non-straight edges
+    let use_astar = start_x != end_x && start_y != end_y;
+    if use_astar {
+        if let Some(path) = path_grid.find_path(Pos::new(start_x, start_y), Pos::new(end_x, end_y))
+        {
+            // Draw the A* path
+            draw_astar_path(grid, &path, h_char, v_char, arrow_char, chars);
+
+            // Handle label for A* path
+            if let Some(lbl) = &edge.label {
+                // Try to place label in the middle of the path
+                if path.len() > 2 {
+                    let mid_idx = path.len() / 2;
+                    let mid_pos = path[mid_idx];
+                    // Draw label to the right/below the mid point
+                    for (i, c) in lbl.chars().enumerate() {
+                        grid.set_if_empty(mid_pos.x + 1 + i, mid_pos.y, c);
+                    }
+                } else {
+                    // Path too short for inline label - drop to legend
+                    let marker_text = format!("[{}]", *next_marker);
+                    dropped_labels.push(DroppedLabel {
+                        marker: marker_text,
+                        label: lbl.clone(),
+                        from: edge.from.clone(),
+                        to: edge.to.clone(),
+                    });
+                    *next_marker += 1;
+                }
+            }
+            return;
+        }
+    }
+
+    // Fall back to existing L-shaped routing
     if direction.is_horizontal() {
         draw_horizontal_edge(
             grid,
@@ -801,6 +1049,8 @@ fn draw_horizontal_edge(
     dropped_labels: &mut Vec<DroppedLabel>,
     next_marker: &mut usize,
 ) {
+    let jchars = chars.to_junction_chars();
+
     if start_y == end_y {
         // Straight horizontal line
         let (from_x, to_x) = if end_x > start_x {
@@ -809,7 +1059,7 @@ fn draw_horizontal_edge(
             (end_x, start_x)
         };
         for x in from_x..to_x {
-            grid.set_if_empty(x, start_y, h_char);
+            grid.set_line_with_merge(x, start_y, h_char, true, &jchars);
         }
         // Arrow just before the end
         if end_x > start_x {
@@ -856,7 +1106,7 @@ fn draw_horizontal_edge(
             (mid_x, start_x)
         };
         for x in from_x..to_x {
-            grid.set_if_empty(x, start_y, h_char);
+            grid.set_line_with_merge(x, start_y, h_char, true, &jchars);
         }
 
         // Turn 1 at (mid_x, start_y)
@@ -882,7 +1132,7 @@ fn draw_horizontal_edge(
             (end_y + 1, start_y)
         };
         for y in from_y..to_y {
-            grid.set_if_empty(mid_x, y, v_char);
+            grid.set_line_with_merge(mid_x, y, v_char, false, &jchars);
         }
 
         // Draw label on vertical segment
@@ -930,7 +1180,7 @@ fn draw_horizontal_edge(
             (end_x, mid_x)
         };
         for x in from_x..to_x {
-            grid.set_if_empty(x, end_y, h_char);
+            grid.set_line_with_merge(x, end_y, h_char, true, &jchars);
         }
 
         // Arrow
@@ -960,6 +1210,8 @@ fn draw_vertical_edge(
     dropped_labels: &mut Vec<DroppedLabel>,
     next_marker: &mut usize,
 ) {
+    let jchars = chars.to_junction_chars();
+
     if start_x == end_x {
         // Straight vertical line
         let (from_y, to_y) = if end_y > start_y {
@@ -968,7 +1220,7 @@ fn draw_vertical_edge(
             (end_y, start_y)
         };
         for y in from_y..to_y {
-            grid.set_if_empty(start_x, y, v_char);
+            grid.set_line_with_merge(start_x, y, v_char, false, &jchars);
         }
         // Arrow just before the end
         if end_y > start_y {
@@ -1009,7 +1261,7 @@ fn draw_vertical_edge(
             (mid_y, start_y)
         };
         for y in from_y..to_y {
-            grid.set_if_empty(start_x, y, v_char);
+            grid.set_line_with_merge(start_x, y, v_char, false, &jchars);
         }
 
         // Turn 1 at (start_x, mid_y)
@@ -1035,7 +1287,7 @@ fn draw_vertical_edge(
             (end_x + 1, start_x)
         };
         for x in from_x..to_x {
-            grid.set_if_empty(x, mid_y, h_char);
+            grid.set_line_with_merge(x, mid_y, h_char, true, &jchars);
         }
 
         // Draw label — try horizontal segment first, fall back to vertical segment
@@ -1097,7 +1349,7 @@ fn draw_vertical_edge(
             (end_y, mid_y)
         };
         for y in from_y..to_y {
-            grid.set_if_empty(end_x, y, v_char);
+            grid.set_line_with_merge(end_x, y, v_char, false, &jchars);
         }
 
         // Arrow
@@ -1146,7 +1398,7 @@ mod tests {
             &graph,
             &RenderOptions {
                 ascii: true,
-                max_width: None,
+                ..Default::default()
             },
             &mut warnings,
         );
@@ -1220,8 +1472,8 @@ mod tests {
         let output = render_graph(
             &graph,
             &RenderOptions {
-                ascii: false,
                 max_width: Some(15),
+                ..Default::default()
             },
             &mut warnings,
         );
@@ -1245,8 +1497,8 @@ mod tests {
         let output = render_graph(
             &graph,
             &RenderOptions {
-                ascii: false,
                 max_width: Some(100), // Wide enough to not truncate
+                ..Default::default()
             },
             &mut warnings,
         );
