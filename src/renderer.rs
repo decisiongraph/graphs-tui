@@ -16,6 +16,11 @@ struct CharSet {
     arr_l: char, // arrow left
     arr_d: char, // arrow down
     arr_u: char, // arrow up
+    // Diagonal arrows for non-orthogonal edges
+    arr_dr: char, // arrow down-right (◢)
+    arr_dl: char, // arrow down-left (◣)
+    arr_ur: char, // arrow up-right (◥)
+    arr_ul: char, // arrow up-left (◤)
     // Rounded corners
     rtl: char,
     rtr: char,
@@ -48,6 +53,10 @@ const UNICODE_CHARS: CharSet = CharSet {
     arr_l: '◀',
     arr_d: '▼',
     arr_u: '▲',
+    arr_dr: '◢',
+    arr_dl: '◣',
+    arr_ur: '◥',
+    arr_ul: '◤',
     rtl: '╭',
     rtr: '╮',
     rbl: '╰',
@@ -76,6 +85,10 @@ const ASCII_CHARS: CharSet = CharSet {
     arr_l: '<',
     arr_d: 'v',
     arr_u: '^',
+    arr_dr: '\\',
+    arr_dl: '/',
+    arr_ur: '/',
+    arr_ul: '\\',
     rtl: '+',
     rtr: '+',
     rbl: '+',
@@ -858,8 +871,14 @@ fn draw_astar_path(
         let pos = path[i];
 
         if i == path.len() - 1 {
-            // Last position - draw arrow
-            grid.set_if_empty(pos.x, pos.y, arrow_char);
+            // Last position - draw arrow, check if diagonal
+            let final_arrow = if i > 0 {
+                let prev = path[i - 1];
+                get_arrow_for_direction(prev, pos, arrow_char, chars)
+            } else {
+                arrow_char
+            };
+            grid.set_if_empty(pos.x, pos.y, final_arrow);
         } else {
             // Determine direction
             let next = path[i + 1];
@@ -881,6 +900,24 @@ fn draw_astar_path(
                 grid.set_line_with_merge(pos.x, pos.y, v_char, false, &jchars);
             }
         }
+    }
+}
+
+/// Get the appropriate arrow character based on movement direction
+fn get_arrow_for_direction(from: Pos, to: Pos, default_arrow: char, chars: &CharSet) -> char {
+    let dx = to.x as isize - from.x as isize;
+    let dy = to.y as isize - from.y as isize;
+
+    match (dx.signum(), dy.signum()) {
+        (1, 0) => chars.arr_r,   // right
+        (-1, 0) => chars.arr_l,  // left
+        (0, 1) => chars.arr_d,   // down
+        (0, -1) => chars.arr_u,  // up
+        (1, 1) => chars.arr_dr,  // down-right
+        (-1, 1) => chars.arr_dl, // down-left
+        (1, -1) => chars.arr_ur, // up-right
+        (-1, -1) => chars.arr_ul, // up-left
+        _ => default_arrow,
     }
 }
 
@@ -1504,5 +1541,37 @@ mod tests {
         );
         // Should not contain ellipsis when no truncation needed
         assert!(!output.contains('…'));
+    }
+
+    #[test]
+    fn test_diagonal_arrow_chars_exist() {
+        // Verify diagonal arrow characters are defined
+        assert_eq!(UNICODE_CHARS.arr_dr, '◢');
+        assert_eq!(UNICODE_CHARS.arr_dl, '◣');
+        assert_eq!(UNICODE_CHARS.arr_ur, '◥');
+        assert_eq!(UNICODE_CHARS.arr_ul, '◤');
+
+        // ASCII fallbacks
+        assert_eq!(ASCII_CHARS.arr_dr, '\\');
+        assert_eq!(ASCII_CHARS.arr_dl, '/');
+        assert_eq!(ASCII_CHARS.arr_ur, '/');
+        assert_eq!(ASCII_CHARS.arr_ul, '\\');
+    }
+
+    #[test]
+    fn test_get_arrow_for_direction() {
+        use crate::pathfinding::Pos;
+
+        // Test cardinal directions
+        assert_eq!(get_arrow_for_direction(Pos::new(0, 0), Pos::new(1, 0), '?', &UNICODE_CHARS), '▶');
+        assert_eq!(get_arrow_for_direction(Pos::new(1, 0), Pos::new(0, 0), '?', &UNICODE_CHARS), '◀');
+        assert_eq!(get_arrow_for_direction(Pos::new(0, 0), Pos::new(0, 1), '?', &UNICODE_CHARS), '▼');
+        assert_eq!(get_arrow_for_direction(Pos::new(0, 1), Pos::new(0, 0), '?', &UNICODE_CHARS), '▲');
+
+        // Test diagonal directions
+        assert_eq!(get_arrow_for_direction(Pos::new(0, 0), Pos::new(1, 1), '?', &UNICODE_CHARS), '◢');
+        assert_eq!(get_arrow_for_direction(Pos::new(1, 0), Pos::new(0, 1), '?', &UNICODE_CHARS), '◣');
+        assert_eq!(get_arrow_for_direction(Pos::new(0, 1), Pos::new(1, 0), '?', &UNICODE_CHARS), '◥');
+        assert_eq!(get_arrow_for_direction(Pos::new(1, 1), Pos::new(0, 0), '?', &UNICODE_CHARS), '◤');
     }
 }
