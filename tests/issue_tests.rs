@@ -1,5 +1,8 @@
 //! Tests for GitHub issues
-use graphs_tui::{render_d2_to_tui, render_mermaid_to_tui, DiagramWarning, RenderOptions};
+use graphs_tui::{
+    is_supported, render_d2_to_tui, render_mermaid_to_tui, DiagramWarning, RenderOptions,
+    SUPPORTED_LANGUAGES,
+};
 
 /// Issue #7: Warnings returned in RenderResult instead of eprintln
 #[test]
@@ -287,4 +290,24 @@ fn test_issue_9_no_legend_when_labels_fit() {
         "No legend when labels fit inline"
     );
     assert!(result.output.contains("yes"), "Label should appear inline");
+}
+
+// ── Issue #12: Expose supported languages list ───────────────────────
+
+/// Issue #12: SUPPORTED_LANGUAGES contains mermaid and d2
+#[test]
+fn test_issue_12_supported_languages() {
+    assert!(SUPPORTED_LANGUAGES.contains(&"mermaid"));
+    assert!(SUPPORTED_LANGUAGES.contains(&"d2"));
+}
+
+/// Issue #12: is_supported works case-insensitively
+#[test]
+fn test_issue_12_is_supported() {
+    assert!(is_supported("mermaid"));
+    assert!(is_supported("Mermaid"));
+    assert!(is_supported("D2"));
+    assert!(is_supported("d2"));
+    assert!(!is_supported("graphviz"));
+    assert!(!is_supported(""));
 }
