@@ -36,7 +36,7 @@ fn test_ascii_mode() {
         input,
         RenderOptions {
             ascii: true,
-            max_width: None,
+            ..Default::default()
         },
     )
     .unwrap();
@@ -676,8 +676,8 @@ fn test_max_width_constraint() {
     let result = render_mermaid_to_tui(
         input,
         RenderOptions {
-            ascii: false,
             max_width: Some(30),
+            ..Default::default()
         },
     )
     .unwrap();

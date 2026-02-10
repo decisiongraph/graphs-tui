@@ -85,12 +85,21 @@ pub enum EdgeStyle {
     ThickLine,
 }
 
+/// A field inside a sql_table or class node (D2)
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TableField {
+    pub name: String,
+    pub type_info: Option<String>,
+    pub constraint: Option<String>,
+}
+
 /// A subgraph/group of nodes
 #[derive(Debug, Clone)]
 pub struct Subgraph {
     pub id: String,
     pub label: String,
     pub nodes: Vec<NodeId>,
+    pub parent: Option<String>,
     pub x: usize,
     pub y: usize,
     pub width: usize,
@@ -103,6 +112,7 @@ impl Subgraph {
             id,
             label,
             nodes: Vec::new(),
+            parent: None,
             x: 0,
             y: 0,
             width: 0,
@@ -118,6 +128,7 @@ pub struct Node {
     pub label: String,
     pub shape: NodeShape,
     pub subgraph: Option<String>,
+    pub fields: Vec<TableField>,
     pub width: usize,
     pub height: usize,
     pub x: usize,
@@ -132,6 +143,7 @@ impl Node {
             label,
             shape: NodeShape::default(),
             subgraph: None,
+            fields: Vec::new(),
             width: 0,
             height: 0,
             x: 0,
@@ -146,6 +158,7 @@ impl Node {
             label,
             shape,
             subgraph: None,
+            fields: Vec::new(),
             width: 0,
             height: 0,
             x: 0,
@@ -185,12 +198,30 @@ impl Graph {
 }
 
 /// Options for rendering the diagram
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone)]
 pub struct RenderOptions {
     /// Use ASCII characters instead of Unicode
     pub ascii: bool,
-    /// Maximum width (not yet implemented)
+    /// Maximum width constraint for the diagram
     pub max_width: Option<usize>,
+    /// Horizontal gap between nodes (default: 8)
+    pub padding_x: usize,
+    /// Vertical gap between nodes (default: 4)
+    pub padding_y: usize,
+    /// Padding between text and node border (default: 1)
+    pub border_padding: usize,
+}
+
+impl Default for RenderOptions {
+    fn default() -> Self {
+        Self {
+            ascii: false,
+            max_width: None,
+            padding_x: 8,
+            padding_y: 4,
+            border_padding: 1,
+        }
+    }
 }
 
 /// Structured warning emitted during layout or rendering
@@ -205,6 +236,8 @@ pub enum DiagramWarning {
         edge_to: String,
         label: String,
     },
+    /// A D2 feature is not supported in TUI rendering
+    UnsupportedFeature { feature: String, line: usize },
 }
 
 impl fmt::Display for DiagramWarning {
@@ -223,6 +256,13 @@ impl fmt::Display for DiagramWarning {
                     f,
                     "Label '{}' on edge {} -> {} moved to legend as {}",
                     label, edge_from, edge_to, marker
+                )
+            }
+            DiagramWarning::UnsupportedFeature { feature, line } => {
+                write!(
+                    f,
+                    "Unsupported D2 feature '{}' on line {}",
+                    feature, line
                 )
             }
         }
