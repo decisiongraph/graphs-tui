@@ -153,7 +153,7 @@ fn parse_line(
         let segments: Vec<&str> = line.split(pattern).map(|s| s.trim()).collect();
 
         if segments.len() > 1 {
-            let mut prev_id: Option<NodeId> = None;
+            let mut prev_ids: Vec<NodeId> = Vec::new();
             let mut pending_edge_label: Option<String> = None;
 
             for segment in segments {
@@ -171,22 +171,35 @@ fn parse_line(
                     continue;
                 }
 
-                let (id, node_label, shape) = parse_node_segment(node_segment, line_num)?;
+                // Parse multi-target: A & B & C
+                let targets = parse_multi_target(node_segment);
+                let mut current_ids: Vec<NodeId> = Vec::new();
 
-                // Add or update node
-                add_or_update_node(graph, &id, node_label, shape, current_subgraph);
+                for target in targets {
+                    let target = target.trim();
+                    if target.is_empty() {
+                        continue;
+                    }
 
-                // Add edge from previous node
-                if let Some(from_id) = prev_id {
-                    graph.edges.push(Edge {
-                        from: from_id,
-                        to: id.clone(),
-                        label: current_edge_label,
-                        style,
-                    });
+                    let (id, node_label, shape) = parse_node_segment(target, line_num)?;
+
+                    // Add or update node
+                    add_or_update_node(graph, &id, node_label, shape, current_subgraph);
+
+                    // Add edges from all previous nodes
+                    for from_id in &prev_ids {
+                        graph.edges.push(Edge {
+                            from: from_id.clone(),
+                            to: id.clone(),
+                            label: current_edge_label.clone(),
+                            style,
+                        });
+                    }
+
+                    current_ids.push(id);
                 }
 
-                prev_id = Some(id);
+                prev_ids = current_ids;
             }
         }
     } else {
@@ -196,6 +209,16 @@ fn parse_line(
     }
 
     Ok(())
+}
+
+/// Parse multi-target syntax: "A & B & C" -> vec!["A", "B", "C"]
+fn parse_multi_target(segment: &str) -> Vec<&str> {
+    // Only split by & if it's surrounded by whitespace (to avoid splitting inside labels)
+    if segment.contains(" & ") {
+        segment.split(" & ").collect()
+    } else {
+        vec![segment]
+    }
 }
 
 /// Add a node to the graph or update it if it exists
@@ -657,5 +680,41 @@ mod tests {
         let graph = parse_mermaid(input).unwrap();
         assert_eq!(graph.edges[0].style, EdgeStyle::DottedArrow);
         assert_eq!(graph.edges[0].label, Some("async".to_string()));
+    }
+
+    // ===== MULTI-TARGET EDGE TESTS =====
+
+    #[test]
+    fn test_parse_multi_target_edges() {
+        let input = "flowchart LR\nA --> B & C & D";
+        let graph = parse_mermaid(input).unwrap();
+        assert_eq!(graph.nodes.len(), 4);
+        assert_eq!(graph.edges.len(), 3);
+        // A -> B, A -> C, A -> D
+        assert_eq!(graph.edges[0].from, "A");
+        assert_eq!(graph.edges[0].to, "B");
+        assert_eq!(graph.edges[1].from, "A");
+        assert_eq!(graph.edges[1].to, "C");
+        assert_eq!(graph.edges[2].from, "A");
+        assert_eq!(graph.edges[2].to, "D");
+    }
+
+    #[test]
+    fn test_parse_multi_target_with_labels() {
+        let input = "flowchart LR\nA[Source] --> B[Target1] & C[Target2]";
+        let graph = parse_mermaid(input).unwrap();
+        assert_eq!(graph.nodes.get("A").unwrap().label, "Source");
+        assert_eq!(graph.nodes.get("B").unwrap().label, "Target1");
+        assert_eq!(graph.nodes.get("C").unwrap().label, "Target2");
+        assert_eq!(graph.edges.len(), 2);
+    }
+
+    #[test]
+    fn test_parse_multi_source_to_multi_target() {
+        let input = "flowchart LR\nA & B --> C & D";
+        let graph = parse_mermaid(input).unwrap();
+        assert_eq!(graph.nodes.len(), 4);
+        // A->C, A->D, B->C, B->D = 4 edges
+        assert_eq!(graph.edges.len(), 4);
     }
 }
