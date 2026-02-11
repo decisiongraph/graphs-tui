@@ -1,0 +1,14 @@
+---
+source: tests/issue_tests.rs
+expression: result.output
+---
+┌───┐
+│ A │
+└───┘
+  │
+  │
+  │
+  ▼
+┌───┐
+│ B │
+└───┘

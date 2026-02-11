@@ -1,0 +1,13 @@
+---
+source: tests/integration_tests.rs
+expression: result.output
+---
+  Browser Market Share
+  ────────────────────
+
+  Chrome   │████████████████████          │ 65 (65.0%)
+  Firefox  │▒▒▒▒▒                         │ 15 (15.0%)
+  Safari   │▒▒▒▒                          │ 12 (12.0%)
+  Edge     │░░                            │ 8 (8.0%)
+
+           Total: 100

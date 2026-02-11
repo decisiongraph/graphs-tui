@@ -13,11 +13,107 @@
 //! - Semicolons: `A -> B; C -> D`
 //! - Null deletion: `x: null`
 
+use winnow::ascii::{space0, Caseless};
+use winnow::combinator::alt;
+use winnow::error::{ErrMode, ParserError};
+use winnow::token::{rest, take_until};
+use winnow::ModalResult;
+use winnow::Parser;
+
 use crate::error::MermaidError;
 use crate::types::{
     DiagramWarning, Direction, Edge, EdgeStyle, Graph, Node, NodeId, NodeShape, Subgraph,
     TableField,
 };
+
+// ===== Winnow parsers =====
+
+/// Parse direction declaration: "direction: right|left|down|up"
+fn w_direction(input: &mut &str) -> ModalResult<Direction> {
+    let _ = "direction:".parse_next(input)?;
+    let _ = space0.parse_next(input)?;
+    alt((
+        Caseless("right").value(Direction::LR),
+        Caseless("left").value(Direction::RL),
+        Caseless("down").value(Direction::TB),
+        Caseless("up").value(Direction::BT),
+    ))
+    .parse_next(input)
+}
+
+/// Parse shape property: "id.shape: type"
+fn w_shape_property(input: &mut &str) -> ModalResult<(String, NodeShape)> {
+    let id: &str = take_until(1.., ".shape:").parse_next(input)?;
+    let _ = ".shape:".parse_next(input)?;
+    let _ = space0.parse_next(input)?;
+    let shape_str: &str = rest.parse_next(input)?;
+    let shape = parse_shape_str(&shape_str.trim().to_lowercase());
+    Ok((id.trim().to_string(), shape))
+}
+
+/// Parse label property: "id.label: text"
+fn w_label_property(input: &mut &str) -> ModalResult<(String, String)> {
+    let id: &str = take_until(1.., ".label:").parse_next(input)?;
+    let _ = ".label:".parse_next(input)?;
+    let _ = space0.parse_next(input)?;
+    let label: &str = rest.parse_next(input)?;
+    let label = label
+        .trim()
+        .trim_matches('"')
+        .trim_matches('\'')
+        .to_string();
+    Ok((id.trim().to_string(), label))
+}
+
+/// Parse standalone shape inside container: "shape: type"
+fn w_standalone_shape(input: &mut &str) -> ModalResult<NodeShape> {
+    let _ = "shape:".parse_next(input)?;
+    let _ = space0.parse_next(input)?;
+    let shape_str: &str = rest.parse_next(input)?;
+    Ok(parse_shape_str(&shape_str.trim().to_lowercase()))
+}
+
+/// Parse table field with optional type and constraint
+fn w_table_field(input: &mut &str) -> ModalResult<TableField> {
+    let line: &str = rest.parse_next(input)?;
+    let line = line.trim();
+    if line.is_empty() || line.starts_with('#') {
+        return Err(ErrMode::from_input(input));
+    }
+
+    let (main_part, constraint) = if let Some(brace_start) = line.find('{') {
+        let main = line[..brace_start].trim();
+        let brace_content = line[brace_start + 1..].trim_end_matches('}').trim();
+        let constraint = if let Some(stripped) = brace_content.strip_prefix("constraint:") {
+            Some(stripped.trim().to_string())
+        } else {
+            Some(brace_content.to_string())
+        };
+        (main, constraint)
+    } else {
+        (line, None)
+    };
+
+    if let Some(colon_idx) = main_part.find(':') {
+        let name = main_part[..colon_idx].trim().to_string();
+        let type_info = main_part[colon_idx + 1..].trim().to_string();
+        Ok(TableField {
+            name,
+            type_info: if type_info.is_empty() {
+                None
+            } else {
+                Some(type_info)
+            },
+            constraint,
+        })
+    } else {
+        Ok(TableField {
+            name: main_part.to_string(),
+            type_info: None,
+            constraint: None,
+        })
+    }
+}
 
 /// Result of parsing D2: a graph plus any warnings
 pub struct D2ParseResult {
@@ -107,19 +203,12 @@ fn process_segment(
     let current_subgraph = container_stack.last().cloned();
 
     // Direction at root level
-    if container_stack.is_empty() && segment.starts_with("direction:") {
-        let dir_str = segment
-            .trim_start_matches("direction:")
-            .trim()
-            .to_lowercase();
-        graph.direction = match dir_str.as_str() {
-            "right" => Direction::LR,
-            "left" => Direction::RL,
-            "down" => Direction::TB,
-            "up" => Direction::BT,
-            _ => Direction::TB,
-        };
-        return;
+    if container_stack.is_empty() {
+        let mut input = segment;
+        if let Ok(dir) = w_direction(&mut input) {
+            graph.direction = dir;
+            return;
+        }
     }
 
     // Check unsupported features
@@ -142,28 +231,30 @@ fn process_segment(
     }
 
     // Standalone shape: inside container
-    if !container_stack.is_empty() && segment.starts_with("shape:") {
-        if let Some(container_id) = container_stack.last() {
-            let shape_str = segment.trim_start_matches("shape:").trim().to_lowercase();
-            let shape = parse_shape_str(&shape_str);
-            if shape == NodeShape::Table {
-                table_nodes.insert(container_id.clone());
+    if !container_stack.is_empty() {
+        let mut input = segment;
+        if let Ok(shape) = w_standalone_shape(&mut input) {
+            if let Some(container_id) = container_stack.last() {
+                if shape == NodeShape::Table {
+                    table_nodes.insert(container_id.clone());
+                }
+                if let Some(node) = graph.nodes.get_mut(container_id) {
+                    node.shape = shape;
+                } else {
+                    let node = Node::with_shape(container_id.clone(), container_id.clone(), shape);
+                    graph.nodes.insert(container_id.clone(), node);
+                }
             }
-            if let Some(node) = graph.nodes.get_mut(container_id) {
-                node.shape = shape;
-            } else {
-                let node = Node::with_shape(container_id.clone(), container_id.clone(), shape);
-                graph.nodes.insert(container_id.clone(), node);
-            }
+            return;
         }
-        return;
     }
 
     // Field declarations inside sql_table/class
     if let Some(container_id) = container_stack.last() {
         if table_nodes.contains(container_id) && !has_arrow(segment) && !segment.contains(".shape:")
         {
-            if let Some(field) = parse_table_field(segment) {
+            let mut input = segment;
+            if let Ok(field) = w_table_field(&mut input) {
                 if let Some(node) = graph.nodes.get_mut(container_id) {
                     node.fields.push(field);
                 }
@@ -184,34 +275,40 @@ fn process_segment(
     }
 
     // Shape property: id.shape: type
-    if let Some((id, shape)) = parse_shape_property(segment) {
-        let resolved_id =
-            resolve_dotted_id(&id, graph, container_stack, current_subgraph.as_deref());
-        if shape == NodeShape::Table {
-            table_nodes.insert(resolved_id.clone());
+    {
+        let mut input = segment;
+        if let Ok((id, shape)) = w_shape_property(&mut input) {
+            let resolved_id =
+                resolve_dotted_id(&id, graph, container_stack, current_subgraph.as_deref());
+            if shape == NodeShape::Table {
+                table_nodes.insert(resolved_id.clone());
+            }
+            if let Some(node) = graph.nodes.get_mut(&resolved_id) {
+                node.shape = shape;
+            } else {
+                let mut node = Node::with_shape(resolved_id.clone(), resolved_id.clone(), shape);
+                node.subgraph = current_subgraph.clone();
+                graph.nodes.insert(resolved_id, node);
+            }
+            return;
         }
-        if let Some(node) = graph.nodes.get_mut(&resolved_id) {
-            node.shape = shape;
-        } else {
-            let mut node = Node::with_shape(resolved_id.clone(), resolved_id.clone(), shape);
-            node.subgraph = current_subgraph.clone();
-            graph.nodes.insert(resolved_id, node);
-        }
-        return;
     }
 
     // Label property: id.label: "text"
-    if let Some((id, label)) = parse_label_property(segment) {
-        let resolved_id =
-            resolve_dotted_id(&id, graph, container_stack, current_subgraph.as_deref());
-        if let Some(node) = graph.nodes.get_mut(&resolved_id) {
-            node.label = label;
-        } else {
-            let mut node = Node::new(resolved_id.clone(), label);
-            node.subgraph = current_subgraph.clone();
-            graph.nodes.insert(resolved_id, node);
+    {
+        let mut input = segment;
+        if let Ok((id, label)) = w_label_property(&mut input) {
+            let resolved_id =
+                resolve_dotted_id(&id, graph, container_stack, current_subgraph.as_deref());
+            if let Some(node) = graph.nodes.get_mut(&resolved_id) {
+                node.label = label;
+            } else {
+                let mut node = Node::new(resolved_id.clone(), label);
+                node.subgraph = current_subgraph.clone();
+                graph.nodes.insert(resolved_id, node);
+            }
+            return;
         }
-        return;
     }
 
     // Skip other dotted properties
@@ -240,8 +337,8 @@ fn process_segment(
     // Null deletion
     if label == "null" {
         let raw_after_id = segment[segment.find(&id).unwrap_or(0) + id.len()..].trim();
-        if raw_after_id.starts_with(':') {
-            let val = raw_after_id[1..].trim();
+        if let Some(stripped) = raw_after_id.strip_prefix(':') {
+            let val = stripped.trim();
             if val == "null" {
                 null_nodes.push(id);
                 return;
@@ -251,8 +348,7 @@ fn process_segment(
 
     // Dotted id as nested node
     if id.contains('.') {
-        let resolved =
-            resolve_dotted_id(&id, graph, container_stack, current_subgraph.as_deref());
+        let resolved = resolve_dotted_id(&id, graph, container_stack, current_subgraph.as_deref());
         use std::collections::hash_map::Entry;
         match graph.nodes.entry(resolved) {
             Entry::Occupied(mut e) => {
@@ -332,11 +428,10 @@ fn handle_container_open(
 
         container_stack.push(clean_id.clone());
 
-        if !graph.nodes.contains_key(&clean_id) {
+        graph.nodes.entry(clean_id).or_insert_with_key(|id| {
             let clean_label = strip_quotes(&label);
-            let node = Node::new(clean_id.clone(), clean_label);
-            graph.nodes.insert(clean_id, node);
-        }
+            Node::new(id.clone(), clean_label)
+        });
     }
 }
 
@@ -351,18 +446,19 @@ fn check_unsupported(segment: &str, line_num: usize, warnings: &mut Vec<DiagramW
         return true;
     }
 
-    if segment.contains('*') && !segment.contains('"') && !segment.contains('\'') {
-        if segment.ends_with('*')
+    if segment.contains('*')
+        && !segment.contains('"')
+        && !segment.contains('\'')
+        && (segment.ends_with('*')
             || segment.contains(".*")
             || segment.contains("*.")
-            || segment.trim() == "*"
-        {
-            warnings.push(DiagramWarning::UnsupportedFeature {
-                feature: "glob".to_string(),
-                line: line_num,
-            });
-            return true;
-        }
+            || segment.trim() == "*")
+    {
+        warnings.push(DiagramWarning::UnsupportedFeature {
+            feature: "glob".to_string(),
+            line: line_num,
+        });
+        return true;
     }
 
     for keyword in &["layers", "scenarios", "steps"] {
@@ -440,8 +536,7 @@ fn parse_connection_chain(
     let tokens = tokenize_connection(segment);
     if tokens.len() < 3 {
         if let Some((from, to, style, label)) = parse_d2_connection(segment) {
-            let from_clean =
-                resolve_connection_id(&from, graph, container_stack, current_subgraph);
+            let from_clean = resolve_connection_id(&from, graph, container_stack, current_subgraph);
             let to_clean = resolve_connection_id(&to, graph, container_stack, current_subgraph);
             ensure_node_exists(graph, &from_clean, current_subgraph);
             ensure_node_exists(graph, &to_clean, current_subgraph);
@@ -658,8 +753,8 @@ fn resolve_dotted_id(
 
     let mut parent: Option<String> = current_subgraph.map(String::from);
 
-    for i in 0..parts.len() - 1 {
-        let part_id = strip_quotes(parts[i]);
+    for part in parts.iter().take(parts.len() - 1) {
+        let part_id = strip_quotes(part);
 
         if !graph.subgraphs.iter().any(|sg| sg.id == part_id) {
             let mut sg = Subgraph::new(part_id.clone(), part_id.clone());
@@ -676,7 +771,8 @@ fn resolve_dotted_id(
         parent = Some(part_id);
     }
 
-    let leaf_id = strip_quotes(parts.last().unwrap());
+    // Safety: parts.len() > 1 guaranteed by early return above
+    let leaf_id = strip_quotes(parts.last().expect("parts has >= 2 elements"));
 
     if !graph.nodes.contains_key(&leaf_id) {
         let mut node = Node::new(leaf_id.clone(), leaf_id.clone());
@@ -869,99 +965,20 @@ fn parse_shape_str(shape_str: &str) -> NodeShape {
         "cylinder" | "queue" | "stored_data" => NodeShape::Cylinder,
         "hexagon" => NodeShape::Hexagon,
         "parallelogram" | "step" => NodeShape::Parallelogram,
-        "document" | "page" => NodeShape::Rectangle,
+        "document" | "page" => NodeShape::Document,
         "package" => NodeShape::Rectangle,
-        "cloud" => NodeShape::Rounded,
-        "person" => NodeShape::Circle,
+        "cloud" => NodeShape::Cloud,
+        "person" => NodeShape::Person,
         "sql_table" | "class" => NodeShape::Table,
         _ => NodeShape::Rectangle,
     }
 }
 
-fn parse_shape_property(line: &str) -> Option<(NodeId, NodeShape)> {
-    if !line.contains(".shape:") {
-        return None;
-    }
-
-    let parts: Vec<&str> = line.splitn(2, ".shape:").collect();
-    if parts.len() != 2 {
-        return None;
-    }
-
-    let id = parts[0].trim().to_string();
-    let shape_str = parts[1].trim().to_lowercase();
-
-    Some((id, parse_shape_str(&shape_str)))
-}
-
-fn parse_label_property(line: &str) -> Option<(String, String)> {
-    if !line.contains(".label:") {
-        return None;
-    }
-
-    let parts: Vec<&str> = line.splitn(2, ".label:").collect();
-    if parts.len() != 2 {
-        return None;
-    }
-
-    let id = parts[0].trim().to_string();
-    let label = parts[1]
-        .trim()
-        .trim_matches('"')
-        .trim_matches('\'')
-        .to_string();
-
-    Some((id, label))
-}
-
-fn parse_table_field(line: &str) -> Option<TableField> {
-    let line = line.trim();
-    if line.is_empty() || line.starts_with('#') {
-        return None;
-    }
-
-    let (main_part, constraint) = if let Some(brace_start) = line.find('{') {
-        let main = line[..brace_start].trim();
-        let brace_content = line[brace_start + 1..].trim_end_matches('}').trim();
-        let constraint = if brace_content.starts_with("constraint:") {
-            Some(
-                brace_content
-                    .trim_start_matches("constraint:")
-                    .trim()
-                    .to_string(),
-            )
-        } else {
-            Some(brace_content.to_string())
-        };
-        (main, constraint)
-    } else {
-        (line, None)
-    };
-
-    if let Some(colon_idx) = main_part.find(':') {
-        let name = main_part[..colon_idx].trim().to_string();
-        let type_info = main_part[colon_idx + 1..].trim().to_string();
-        Some(TableField {
-            name,
-            type_info: if type_info.is_empty() {
-                None
-            } else {
-                Some(type_info)
-            },
-            constraint,
-        })
-    } else {
-        Some(TableField {
-            name: main_part.to_string(),
-            type_info: None,
-            constraint: None,
-        })
-    }
-}
-
 fn strip_quotes(s: &str) -> String {
     let s = s.trim();
-    if (s.starts_with('"') && s.ends_with('"')) || (s.starts_with('\'') && s.ends_with('\'')) {
+    if s.len() >= 2
+        && ((s.starts_with('"') && s.ends_with('"')) || (s.starts_with('\'') && s.ends_with('\'')))
+    {
         s[1..s.len() - 1].to_string()
     } else {
         s.to_string()
@@ -1183,7 +1200,11 @@ web -> api
         assert!(graph.subgraphs.iter().any(|sg| sg.id == "cloud"));
         assert!(graph.subgraphs.iter().any(|sg| sg.id == "backend"));
         assert!(graph.subgraphs.iter().any(|sg| sg.id == "frontend"));
-        let backend_sg = graph.subgraphs.iter().find(|sg| sg.id == "backend").unwrap();
+        let backend_sg = graph
+            .subgraphs
+            .iter()
+            .find(|sg| sg.id == "backend")
+            .unwrap();
         assert_eq!(backend_sg.parent, Some("cloud".to_string()));
     }
 
@@ -1240,10 +1261,7 @@ users {
         assert_eq!(users.fields.len(), 3);
         assert_eq!(users.fields[0].name, "id");
         assert_eq!(users.fields[0].type_info, Some("int".to_string()));
-        assert_eq!(
-            users.fields[0].constraint,
-            Some("primary_key".to_string())
-        );
+        assert_eq!(users.fields[0].constraint, Some("primary_key".to_string()));
         assert_eq!(users.fields[1].name, "name");
         assert_eq!(users.fields[2].name, "email");
     }

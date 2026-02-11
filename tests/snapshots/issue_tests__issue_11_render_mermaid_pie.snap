@@ -1,0 +1,8 @@
+---
+source: tests/issue_tests.rs
+expression: result.output
+---
+  A  │██████████████████            │ 60 (60.0%)
+  B  │▓▓▓▓▓▓▓▓▓▓▓▓                  │ 40 (40.0%)
+
+     Total: 100

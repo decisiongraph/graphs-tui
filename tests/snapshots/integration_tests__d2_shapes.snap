@@ -1,0 +1,16 @@
+---
+source: tests/integration_tests.rs
+expression: result.output
+---
+╭────────╮
+├────────┤
+│Database│
+├────────┤
+╰────────╯
+     │
+     │
+     │
+     ▼
+ (╭────╮)
+ (Circle)
+ (╰────╯)

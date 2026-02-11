@@ -1,0 +1,19 @@
+---
+source: tests/issue_tests.rs
+expression: result.output
+---
+╔My Group═╗
+║Node1│   ║
+║─────┘   ║
+║  │      ║
+║  │      ║
+║  │      ║
+║  ▼      ║
+║─────┐   ║
+║Node2│   ║
+║─────┘   ║
+║         ║
+║         ║
+║         ║
+║         ║
+╚═════════╝

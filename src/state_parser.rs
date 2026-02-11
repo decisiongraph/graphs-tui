@@ -2,86 +2,258 @@
 //!
 //! Supports both stateDiagram (v1) and stateDiagram-v2 syntax
 
+use winnow::ascii::{space0, space1};
+use winnow::combinator::{alt, delimited, opt, preceded};
+use winnow::token::{rest, take_until, take_while};
+use winnow::ModalResult;
+use winnow::Parser;
+
 use crate::error::MermaidError;
 use crate::types::{Direction, Edge, EdgeStyle, Graph, Node, NodeShape, Subgraph};
 
+/// Content of a single line (after trimming)
+#[derive(Debug)]
+enum StateLine {
+    Header,
+    Direction,
+    StateDeclaration {
+        id: String,
+        label: String,
+    },
+    CompositeStart {
+        id: String,
+        label: String,
+    },
+    CompositeEnd,
+    Transition {
+        from: String,
+        to: String,
+        label: Option<String>,
+    },
+    SimpleState(String),
+    Empty,
+}
+
+/// Parse stateDiagram or stateDiagram-v2 header
+fn parse_header(input: &mut &str) -> ModalResult<()> {
+    let _ = winnow::ascii::Caseless("statediagram").parse_next(input)?;
+    let _ = opt(("-v2", opt(space0))).parse_next(input)?;
+    Ok(())
+}
+
+/// Parse direction declaration
+fn parse_direction(input: &mut &str) -> ModalResult<()> {
+    let _ = winnow::ascii::Caseless("direction").parse_next(input)?;
+    Ok(())
+}
+
+/// Parse a quoted string: "..."
+fn parse_quoted_string(input: &mut &str) -> ModalResult<String> {
+    delimited('"', take_until(0.., "\""), '"')
+        .map(|s: &str| s.to_string())
+        .parse_next(input)
+}
+
+/// Parse state ID (alphanumeric + underscore)
+fn parse_state_id(input: &mut &str) -> ModalResult<String> {
+    take_while(1.., |c: char| c.is_alphanumeric() || c == '_')
+        .map(|s: &str| s.to_string())
+        .parse_next(input)
+}
+
+/// Parse [*] special state marker
+fn parse_special_state(input: &mut &str) -> ModalResult<String> {
+    delimited('[', '*', ']')
+        .map(|_| "[*]".to_string())
+        .parse_next(input)
+}
+
+/// Parse a state reference (either [*] or regular ID)
+fn parse_state_ref(input: &mut &str) -> ModalResult<String> {
+    alt((parse_special_state, parse_state_id)).parse_next(input)
+}
+
+/// Parse state declaration: state "Description" as ID
+fn parse_state_with_description(input: &mut &str) -> ModalResult<(String, String)> {
+    let _ = winnow::ascii::Caseless("state").parse_next(input)?;
+    let _ = space1.parse_next(input)?;
+    let description = parse_quoted_string.parse_next(input)?;
+    let _ = space1.parse_next(input)?;
+    let _ = winnow::ascii::Caseless("as").parse_next(input)?;
+    let _ = space1.parse_next(input)?;
+    let id = parse_state_id.parse_next(input)?;
+    Ok((id, description))
+}
+
+/// Parse composite state start: state Name {
+fn parse_composite_start(input: &mut &str) -> ModalResult<String> {
+    let _ = winnow::ascii::Caseless("state").parse_next(input)?;
+    let _ = space1.parse_next(input)?;
+    let name = take_while(1.., |c: char| c.is_alphanumeric() || c == '_').parse_next(input)?;
+    let _ = space0.parse_next(input)?;
+    let _ = '{'.parse_next(input)?;
+    Ok(name.to_string())
+}
+
+/// Parse simple state declaration: state ID
+fn parse_simple_state_decl(input: &mut &str) -> ModalResult<String> {
+    let _ = winnow::ascii::Caseless("state").parse_next(input)?;
+    let _ = space1.parse_next(input)?;
+    let id = parse_state_id.parse_next(input)?;
+    Ok(id)
+}
+
+/// Parse transition: State1 --> State2 or State1 --> State2: label
+fn parse_transition(input: &mut &str) -> ModalResult<(String, String, Option<String>)> {
+    let from = parse_state_ref.parse_next(input)?;
+    let _ = space0.parse_next(input)?;
+    let _ = "-->".parse_next(input)?;
+    let _ = space0.parse_next(input)?;
+    let to = parse_state_ref.parse_next(input)?;
+
+    // Check for label
+    let _ = space0.parse_next(input)?;
+    let label = opt(preceded(':', preceded(space0, rest)))
+        .map(|o: Option<&str>| o.map(|s| s.trim().to_string()).filter(|s| !s.is_empty()))
+        .parse_next(input)?;
+
+    Ok((from, to, label))
+}
+
+/// Parse a single line and classify it
+fn parse_line(line: &str) -> StateLine {
+    let trimmed = line.trim();
+
+    // Empty line
+    if trimmed.is_empty() {
+        return StateLine::Empty;
+    }
+
+    // Comment
+    if trimmed.starts_with("%%") {
+        return StateLine::Empty;
+    }
+
+    // Composite state end
+    if trimmed == "}" {
+        return StateLine::CompositeEnd;
+    }
+
+    // Header
+    if parse_header.parse(trimmed).is_ok() {
+        return StateLine::Header;
+    }
+
+    // Direction
+    if parse_direction.parse(trimmed).is_ok() {
+        return StateLine::Direction;
+    }
+
+    // Composite state start
+    if let Ok(id) = parse_composite_start.parse(trimmed) {
+        return StateLine::CompositeStart {
+            id: id.clone(),
+            label: id,
+        };
+    }
+
+    // State with description
+    if let Ok((id, label)) = parse_state_with_description.parse(trimmed) {
+        return StateLine::StateDeclaration { id, label };
+    }
+
+    // Transition
+    if let Ok((from, to, label)) = parse_transition.parse(trimmed) {
+        return StateLine::Transition { from, to, label };
+    }
+
+    // Simple state declaration
+    if let Ok(id) = parse_simple_state_decl.parse(trimmed) {
+        return StateLine::StateDeclaration {
+            id: id.clone(),
+            label: id,
+        };
+    }
+
+    // Check if it's a simple valid state ID
+    if is_valid_state_id(trimmed) {
+        return StateLine::SimpleState(trimmed.to_string());
+    }
+
+    StateLine::Empty
+}
+
 /// Parse state diagram syntax into a Graph
 pub fn parse_state_diagram(input: &str) -> Result<Graph, MermaidError> {
-    let lines: Vec<&str> = input
-        .lines()
-        .map(|l| l.trim())
-        .filter(|l| !l.is_empty() && !l.starts_with("%%"))
-        .collect();
+    let lines: Vec<&str> = input.lines().collect();
 
-    if lines.is_empty() {
+    if lines.is_empty() || lines.iter().all(|l| l.trim().is_empty()) {
         return Err(MermaidError::EmptyInput);
     }
 
-    // Validate header
-    let first_line = lines[0].to_lowercase();
-    if !first_line.starts_with("statediagram") {
+    let mut graph = Graph::new(Direction::TB);
+    let mut current_composite: Option<String> = None;
+    let mut state_counter = 0;
+    let mut found_header = false;
+
+    for line in lines.iter() {
+        match parse_line(line) {
+            StateLine::Header => {
+                found_header = true;
+            }
+            StateLine::Direction => {}
+            StateLine::StateDeclaration { id, label } => {
+                let mut node = Node::with_shape(id.clone(), label, NodeShape::Rounded);
+                node.subgraph = current_composite.clone();
+                graph.nodes.insert(id, node);
+            }
+            StateLine::CompositeStart { id, label } => {
+                let sg = Subgraph::new(id.clone(), label);
+                graph.subgraphs.push(sg);
+                current_composite = Some(id);
+            }
+            StateLine::CompositeEnd => {
+                current_composite = None;
+            }
+            StateLine::Transition { from, to, label } => {
+                let from_id = handle_state_ref(
+                    &mut graph,
+                    &from,
+                    current_composite.as_deref(),
+                    &mut state_counter,
+                    true,
+                );
+                let to_id = handle_state_ref(
+                    &mut graph,
+                    &to,
+                    current_composite.as_deref(),
+                    &mut state_counter,
+                    false,
+                );
+                graph.edges.push(Edge {
+                    from: from_id,
+                    to: to_id,
+                    label,
+                    style: EdgeStyle::Arrow,
+                });
+            }
+            StateLine::SimpleState(id) => {
+                graph.nodes.entry(id.clone()).or_insert_with(|| {
+                    let mut node = Node::with_shape(id.clone(), id.clone(), NodeShape::Rounded);
+                    node.subgraph = current_composite.clone();
+                    node
+                });
+            }
+            StateLine::Empty => {}
+        }
+    }
+
+    if !found_header {
         return Err(MermaidError::ParseError {
             line: 1,
             message: "Expected stateDiagram or stateDiagram-v2".to_string(),
             suggestion: Some("Start with 'stateDiagram' or 'stateDiagram-v2'".to_string()),
         });
-    }
-
-    // State diagrams are typically vertical (TB)
-    let mut graph = Graph::new(Direction::TB);
-    let mut current_composite: Option<String> = None;
-    let mut state_counter = 0;
-
-    for line in lines.iter().skip(1) {
-        // Skip direction declarations
-        if line.starts_with("direction") {
-            continue;
-        }
-
-        // Handle composite state start: state Name {
-        if line.starts_with("state") && line.ends_with('{') {
-            let (id, label) = parse_state_declaration(line)?;
-            let sg = Subgraph::new(id.clone(), label);
-            graph.subgraphs.push(sg);
-            current_composite = Some(id);
-            continue;
-        }
-
-        // Handle composite state end
-        if *line == "}" {
-            current_composite = None;
-            continue;
-        }
-
-        // Handle state declaration with description: state "Description" as ID
-        if line.starts_with("state") {
-            let (id, label) = parse_state_declaration(line)?;
-            let mut node = Node::with_shape(id.clone(), label, NodeShape::Rounded);
-            node.subgraph = current_composite.clone();
-            graph.nodes.insert(id, node);
-            continue;
-        }
-
-        // Handle transitions: State1 --> State2 or State1 --> State2: label
-        if line.contains("-->") {
-            parse_transition(
-                &mut graph,
-                line,
-                current_composite.as_deref(),
-                &mut state_counter,
-            )?;
-            continue;
-        }
-
-        // Handle simple state declaration (just an ID)
-        if is_valid_state_id(line) {
-            let id = line.to_string();
-            graph.nodes.entry(id).or_insert_with_key(|key| {
-                let mut node = Node::with_shape(key.clone(), key.clone(), NodeShape::Rounded);
-                node.subgraph = current_composite.clone();
-                node
-            });
-        }
     }
 
     if graph.nodes.is_empty() && graph.edges.is_empty() {
@@ -95,90 +267,29 @@ pub fn parse_state_diagram(input: &str) -> Result<Graph, MermaidError> {
     Ok(graph)
 }
 
-/// Parse state declaration: state "Description" as ID or state ID { or just state ID
-fn parse_state_declaration(line: &str) -> Result<(String, String), MermaidError> {
-    let rest = line.strip_prefix("state").unwrap_or(line).trim();
-
-    // Handle: state Name {
-    if rest.ends_with('{') {
-        let name = rest.trim_end_matches('{').trim();
-        return Ok((name.to_string(), name.to_string()));
-    }
-
-    // Handle: state "Description" as ID
-    if let Some(stripped) = rest.strip_prefix('"') {
-        if let Some(end_quote) = stripped.find('"') {
-            let description = &stripped[..end_quote];
-            let after_quote = stripped[end_quote + 1..].trim();
-            if after_quote.starts_with("as") {
-                let id = after_quote.strip_prefix("as").unwrap_or("").trim();
-                return Ok((id.to_string(), description.to_string()));
-            }
-        }
-    }
-
-    // Handle: state ID
-    let id = rest.split_whitespace().next().unwrap_or(rest);
-    Ok((id.to_string(), id.to_string()))
-}
-
-/// Parse transition line: State1 --> State2 or State1 --> State2: label
-fn parse_transition(
+/// Handle a state reference, creating special nodes for [*]
+fn handle_state_ref(
     graph: &mut Graph,
-    line: &str,
-    current_composite: Option<&str>,
-    state_counter: &mut usize,
-) -> Result<(), MermaidError> {
-    let parts: Vec<&str> = line.splitn(2, "-->").collect();
-    if parts.len() != 2 {
-        return Ok(());
+    state_ref: &str,
+    composite: Option<&str>,
+    counter: &mut usize,
+    is_start: bool,
+) -> String {
+    if state_ref == "[*]" {
+        *counter += 1;
+        let (id, label) = if is_start {
+            (format!("__start_{}", counter), "●".to_string())
+        } else {
+            (format!("__end_{}", counter), "◉".to_string())
+        };
+        let mut node = Node::with_shape(id.clone(), label, NodeShape::Circle);
+        node.subgraph = composite.map(String::from);
+        graph.nodes.insert(id.clone(), node);
+        id
+    } else {
+        ensure_state_exists(graph, state_ref, composite);
+        state_ref.to_string()
     }
-
-    let from_raw = parts[0].trim();
-    let to_part = parts[1].trim();
-
-    // Check for label: State : label
-    let (to_raw, label) = if let Some(colon_idx) = to_part.find(':') {
-        let to = to_part[..colon_idx].trim();
-        let lbl = to_part[colon_idx + 1..].trim();
-        (to, Some(lbl.to_string()))
-    } else {
-        (to_part, None)
-    };
-
-    // Handle special states [*] for start/end
-    let from = if from_raw == "[*]" {
-        *state_counter += 1;
-        let id = format!("__start_{}", state_counter);
-        let mut node = Node::with_shape(id.clone(), "●".to_string(), NodeShape::Circle);
-        node.subgraph = current_composite.map(String::from);
-        graph.nodes.insert(id.clone(), node);
-        id
-    } else {
-        ensure_state_exists(graph, from_raw, current_composite);
-        from_raw.to_string()
-    };
-
-    let to = if to_raw == "[*]" {
-        *state_counter += 1;
-        let id = format!("__end_{}", state_counter);
-        let mut node = Node::with_shape(id.clone(), "◉".to_string(), NodeShape::Circle);
-        node.subgraph = current_composite.map(String::from);
-        graph.nodes.insert(id.clone(), node);
-        id
-    } else {
-        ensure_state_exists(graph, to_raw, current_composite);
-        to_raw.to_string()
-    };
-
-    graph.edges.push(Edge {
-        from,
-        to,
-        label,
-        style: EdgeStyle::Arrow,
-    });
-
-    Ok(())
 }
 
 /// Ensure a state exists in the graph
@@ -242,5 +353,12 @@ mod tests {
         let graph = parse_state_diagram(input).unwrap();
         assert_eq!(graph.subgraphs.len(), 1);
         assert_eq!(graph.subgraphs[0].id, "Active");
+    }
+
+    #[test]
+    fn test_parse_state_ref() {
+        assert_eq!(parse_state_ref.parse("[*]").unwrap(), "[*]");
+        assert_eq!(parse_state_ref.parse("Idle").unwrap(), "Idle");
+        assert_eq!(parse_state_ref.parse("state_1").unwrap(), "state_1");
     }
 }

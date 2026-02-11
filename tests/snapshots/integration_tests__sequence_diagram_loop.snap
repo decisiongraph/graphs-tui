@@ -1,0 +1,14 @@
+---
+source: tests/integration_tests.rs
+expression: result.output
+---
+   ┌─────┐      ┌───┐   
+   │Alice│      │Bob│   
+   └─────┘      └───┘   
+      │           │     
+      │──────────▶│       Hello
+ ┌[loop Every minute]─┐
+      │           │     
+      │◀──────────│       Ping
+ └────────────────────┘
+      │           │

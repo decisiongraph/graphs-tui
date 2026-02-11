@@ -1,0 +1,21 @@
+---
+source: tests/issue_tests.rs
+expression: first
+---
+┌───────────────┐        ┌─────┐
+│Analytics Query│        │Users│
+└───────────────┘        └─────┘
+        │                   │
+        │                   │
+        │60 conns heldests──│
+        │       ▼           │
+        ┌──────────────┐    │
+        │Production API│    │
+        └──────────────┘    │
+               │└503 errors─┐
+               ││need conn
+               │┘
+               ▼
+┌─────────────────────────────┐
+│PgBouncer { shape: cylinder }│
+└─────────────────────────────┘

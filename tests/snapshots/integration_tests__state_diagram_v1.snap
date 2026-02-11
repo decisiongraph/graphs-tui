@@ -1,0 +1,21 @@
+---
+source: tests/integration_tests.rs
+expression: result.output
+---
+╭───╮
+│s1 │
+╰───╯
+  │
+  │
+  │
+  ▼
+╭───╮
+│s2 │
+╰───╯
+  │
+  │
+  │
+  ▼
+╭───╮
+│s3 │
+╰───╯

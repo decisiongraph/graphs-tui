@@ -1,0 +1,17 @@
+---
+source: tests/issue_tests.rs
+expression: result.output
+---
+    ┌─────┐
+    │Users│
+    └─────┘
+       │
+       │requests
+       │┐
+       │▼
+┌──────────────┐
+│Production API│
+└──────────────┘
+       ┌┘
+Labels:
+  [1] 503 errors

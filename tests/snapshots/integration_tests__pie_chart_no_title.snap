@@ -1,0 +1,8 @@
+---
+source: tests/integration_tests.rs
+expression: result.output
+---
+  Yes  │█████████████████████         │ 70 (70.0%)
+  No   │▓▓▓▓▓▓▓▓▓                     │ 30 (30.0%)
+
+       Total: 100

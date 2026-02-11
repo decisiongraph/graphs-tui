@@ -21,10 +21,7 @@ C --> A"#;
         result.warnings[0].to_string().contains("Cycle"),
         "Warning should mention cycle"
     );
-    // Output should still render
-    assert!(result.output.contains("A"));
-    assert!(result.output.contains("B"));
-    assert!(result.output.contains("C"));
+    insta::assert_snapshot!(result.output);
 }
 
 /// Issue #7: Non-cyclic graphs produce no warnings
@@ -33,6 +30,7 @@ fn test_issue_7_no_warning_without_cycle() {
     let input = "flowchart LR\nA --> B --> C";
     let result = render_mermaid_to_tui(input, RenderOptions::default()).unwrap();
     assert!(result.warnings.is_empty(), "No cycle means no warnings");
+    insta::assert_snapshot!(result.output);
 }
 
 /// Issue #7: D2 cyclic graph also produces warning
@@ -48,6 +46,7 @@ C -> A
         !result.warnings.is_empty(),
         "D2 cycle should produce a warning"
     );
+    insta::assert_snapshot!(result.output);
 }
 
 /// Issue #7: Pie chart has no warnings
@@ -59,6 +58,7 @@ fn test_issue_7_pie_no_warnings() {
 "#;
     let result = graphs_tui::render_pie_chart(input, RenderOptions::default()).unwrap();
     assert!(result.warnings.is_empty());
+    insta::assert_snapshot!(result.output);
 }
 
 // ── Issue #8: Rendering artifacts ──────────────────────────────────────
@@ -84,6 +84,7 @@ fn test_issue_8_cylinder_5_rows() {
     // Row 1 and 3 should have ├ separators
     assert!(lines[top + 1].contains('├'), "Row 1 should have ├");
     assert!(lines[top + 3].contains('├'), "Row 3 should have ├");
+    insta::assert_snapshot!(result.output);
 }
 
 /// Issue #8: Edge connects to cylinder midpoint (height/2), not y+1
@@ -107,6 +108,7 @@ fn test_issue_8_edge_connects_cylinder_midpoint() {
         arrow_line, label_line,
         "Arrow should connect at cylinder midpoint (same row as label)"
     );
+    insta::assert_snapshot!(result.output);
 }
 
 /// Issue #8: Subgraph ║ borders not corrupted by nodes
@@ -127,6 +129,7 @@ end"#;
     assert!(output.contains('╗'), "Subgraph should have ╗ corner");
     assert!(output.contains('╚'), "Subgraph should have ╚ corner");
     assert!(output.contains('╝'), "Subgraph should have ╝ corner");
+    insta::assert_snapshot!(result.output);
 }
 
 /// Issue #8: Subgraph labels not corrupted by edges
@@ -144,6 +147,7 @@ A --> B"#;
         output.contains("My Group"),
         "Subgraph label should be intact"
     );
+    insta::assert_snapshot!(result.output);
 }
 
 // ── Issue #9: Deterministic layout, dropped edge labels, cycle warning UX ──
@@ -165,6 +169,7 @@ C --> D"#;
             .output;
         assert_eq!(first, result, "Mermaid run {i} differs from first run");
     }
+    insta::assert_snapshot!(first);
 }
 
 /// Issue #9: Same input produces identical output across multiple runs (D2)
@@ -185,6 +190,7 @@ C -> D
             .output;
         assert_eq!(first, result, "D2 run {i} differs from first run");
     }
+    insta::assert_snapshot!(first);
 }
 
 /// Issue #9: D2 cycle graph determinism (original reproducer from #9)
@@ -209,6 +215,7 @@ api -> users: 503 errors
             .output;
         assert_eq!(first, result, "D2 cycle run {i} differs");
     }
+    insta::assert_snapshot!(first);
 }
 
 /// Issue #9: Edge label dropped to legend when edge is too short
@@ -236,6 +243,7 @@ fn test_issue_9_edge_label_legend() {
         .iter()
         .any(|w| matches!(w, DiagramWarning::LabelDropped { .. }));
     assert!(has_label_warning, "Should have a LabelDropped warning");
+    insta::assert_snapshot!(result.output);
 }
 
 /// Issue #9: Cycle warning includes node names
@@ -258,6 +266,7 @@ Z --> X"#;
         }
         other => panic!("Expected CycleDetected, got: {other:?}"),
     }
+    insta::assert_snapshot!(result.output);
 }
 
 /// Issue #9: DiagramWarning Display impl
@@ -290,6 +299,7 @@ fn test_issue_9_no_legend_when_labels_fit() {
         "No legend when labels fit inline"
     );
     assert!(result.output.contains("yes"), "Label should appear inline");
+    insta::assert_snapshot!(result.output);
 }
 
 // ── Issue #12: Expose supported languages list ───────────────────────
@@ -318,8 +328,7 @@ fn test_issue_12_is_supported() {
 #[test]
 fn test_issue_11_render_d2() {
     let result = render("d2", "A -> B", RenderOptions::default()).unwrap();
-    assert!(result.output.contains("A"));
-    assert!(result.output.contains("B"));
+    insta::assert_snapshot!(result.output);
 }
 
 /// Issue #11: render("mermaid", ...) dispatches to Mermaid auto-detect
@@ -331,8 +340,7 @@ fn test_issue_11_render_mermaid() {
         RenderOptions::default(),
     )
     .unwrap();
-    assert!(result.output.contains("Start"));
-    assert!(result.output.contains("End"));
+    insta::assert_snapshot!(result.output);
 }
 
 /// Issue #11: render("mermaid", ...) handles pie charts
@@ -344,16 +352,14 @@ fn test_issue_11_render_mermaid_pie() {
         RenderOptions::default(),
     )
     .unwrap();
-    assert!(result.output.contains("A"));
-    assert!(result.output.contains("60"));
+    insta::assert_snapshot!(result.output);
 }
 
 /// Issue #11: render is case-insensitive on lang
 #[test]
 fn test_issue_11_render_case_insensitive() {
     let result = render("D2", "X -> Y", RenderOptions::default()).unwrap();
-    assert!(result.output.contains("X"));
-    assert!(result.output.contains("Y"));
+    insta::assert_snapshot!(result.output);
 }
 
 // ── Issue #13: Validate-only check() ─────────────────────────────────
@@ -443,6 +449,7 @@ api -> users: 503 errors
         pgbouncer_line > api_line,
         "pgbouncer should be below api: pgbouncer={pgbouncer_line} api={api_line}"
     );
+    insta::assert_snapshot!(result.output);
 }
 
 /// Issue #18: Labels render inline (no Labels: legend) for D2 cycle graph
@@ -463,6 +470,7 @@ api -> users: 503 errors
         !result.output.contains("Labels:"),
         "Labels should render inline, no legend section needed"
     );
+    insta::assert_snapshot!(result.output);
 }
 
 /// Issue #18: Output should not end with blank lines
@@ -481,6 +489,7 @@ fn test_issue_18_no_trailing_blank_lines() {
         !result.output.ends_with('\n'),
         "Output should not end with newline"
     );
+    insta::assert_snapshot!(result.output);
 }
 
 /// Issue #18: D2 cycle graph output has no trailing blank lines
@@ -503,6 +512,7 @@ api -> users: 503 errors
         !last_line.trim().is_empty(),
         "D2 output should not end with blank line"
     );
+    insta::assert_snapshot!(result.output);
 }
 
 /// Issue #18: Cycle warning still fires for graphs with back-edges
@@ -523,4 +533,5 @@ api -> users: 503 errors
         result.warnings[0].to_string().contains("Cycle"),
         "Warning should mention cycle"
     );
+    insta::assert_snapshot!(result.output);
 }

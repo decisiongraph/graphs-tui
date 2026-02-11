@@ -1,0 +1,56 @@
+---
+source: tests/integration_tests.rs
+expression: result.output
+---
+                               ┌────┐
+                               │User│
+                               └────┘
+                                  │
+                                  │
+                                  │HTTPS
+                                  ▼
+                                ┌───┐
+                                │CDN│
+                                └───┘
+                                  │
+                                  │
+                                  │static
+                                  ▼
+                              ┌───────┐
+                              │Browser│
+                              └───────┘
+                                  │
+                                  │
+                                  │API call
+                                  ▼
+                            ┌───────────┐
+                            │API Gateway│
+                            └───────────┘
+                                  │
+                                  │
+                                  │route
+                                  ▼
+                            ┌──────────┐
+                            │App Server│
+                            └──────────┘
+                                  │
+                                  │read/write
+       ┌─────────validate┌────────└charge┐──enqueue──────────┐
+       ▼                 ▼        │      ▼                   ▼
+┌────────────┐        ┌─────┐     │pe┌───────┐        ┌─────────────┐
+│Auth Service│        │Cache│     │  │Payment│        │Message Queue│
+└────────────┘        └─────┘     │  └───────┘        └─────────────┘
+                                  │                          │
+                                  │                          │
+                           ┌──────┌─────────process──────────┘
+                           │      ▼
+                           │  ┌──────┐
+                           │  │Worker│
+                           │  └──────┘
+                           │      │
+                           │      │
+                           ┌update└─notify─┐
+                           ▼               ▼
+                      ┌────────┐        ┌─────┐
+                      │Database│        │Email│
+                      └────────┘        └─────┘

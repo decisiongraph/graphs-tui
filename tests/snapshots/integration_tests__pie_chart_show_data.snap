@@ -1,0 +1,12 @@
+---
+source: tests/integration_tests.rs
+expression: result.output
+---
+  Project Status
+  ──────────────
+
+  Completed    │▓▓▓▓▓▓▓▓▓▓▓▓▓▓                │ 45 (45.0%)
+  In Progress  │▓▓▓▓▓▓▓▓▓▓▓                   │ 35 (35.0%)
+  Not Started  │▒▒▒▒▒▒                        │ 20 (20.0%)
+
+               Total: 100

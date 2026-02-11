@@ -1,0 +1,9 @@
+---
+source: tests/issue_tests.rs
+expression: result.output
+---
+               ╭────────╮
+┌─────┐        ├────────┤
+│Start│───────▶│Database│
+└─────┘        ├────────┤
+               ╰────────╯

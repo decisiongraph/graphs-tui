@@ -1,0 +1,12 @@
+---
+source: tests/integration_tests.rs
+expression: result.output
+---
+  ┌──────┐    ┌──────┐  
+  │Client│    │Server│  
+  └──────┘    └──────┘  
+      │           │     
+      │──────────▶│       Request
+      │           │     
+      │◀··········│       Response
+      │           │

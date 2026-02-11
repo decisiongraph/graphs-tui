@@ -1,5 +1,7 @@
 use std::fmt;
 
+use crate::renderer::backend::RenderBackend;
+
 /// Line direction flags for junction merging
 #[derive(Clone, Copy, Default)]
 pub struct LineFlags {
@@ -123,7 +125,39 @@ impl Grid {
             None
         }
     }
+}
 
+impl RenderBackend for Grid {
+    fn set(&mut self, x: usize, y: usize, c: char) {
+        Grid::set(self, x, y, c)
+    }
+
+    fn set_if_empty(&mut self, x: usize, y: usize, c: char) -> bool {
+        Grid::set_if_empty(self, x, y, c)
+    }
+
+    fn mark_protected(&mut self, x: usize, y: usize) {
+        Grid::mark_protected(self, x, y)
+    }
+
+    fn set_line_with_merge(
+        &mut self,
+        x: usize,
+        y: usize,
+        c: char,
+        is_horizontal: bool,
+        chars: &JunctionChars,
+    ) -> bool {
+        Grid::set_line_with_merge(self, x, y, c, is_horizontal, chars)
+    }
+
+    fn dimensions(&self) -> (usize, usize) {
+        (self.width, self.height)
+    }
+
+    fn get(&self, x: usize, y: usize) -> Option<char> {
+        Grid::get(self, x, y)
+    }
 }
 
 /// Junction characters needed for line merging

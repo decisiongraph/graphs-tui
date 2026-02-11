@@ -1,4 +1,7 @@
-use crate::types::{DiagramWarning, Direction, Graph, NodeId, NodeShape, RenderOptions, TableField};
+use crate::text::display_width;
+use crate::types::{
+    DiagramWarning, Direction, Graph, NodeId, NodeShape, RenderOptions, TableField,
+};
 use std::collections::{HashMap, HashSet, VecDeque};
 
 const MIN_NODE_WIDTH: usize = 5;
@@ -26,12 +29,30 @@ pub fn compute_layout_with_options(
     // Border padding affects node width (text + 2*border_padding)
     let text_padding = options.border_padding * 2;
 
-    // 1. Compute node sizes (use chars().count() for proper Unicode handling)
+    // 1. Compute node sizes (use display_width for proper Unicode/CJK handling)
     for node in graph.nodes.values_mut() {
-        node.width = (node.label.chars().count() + text_padding).max(MIN_NODE_WIDTH);
-        node.height = NODE_HEIGHT;
+        let lines: Vec<&str> = node.label.split('\n').collect();
+        let max_line_width = lines.iter().map(|l| display_width(l)).max().unwrap_or(0);
+        node.width = (max_line_width + text_padding).max(MIN_NODE_WIDTH);
+        let line_count = lines.len();
+        node.height = if line_count > 1 {
+            line_count + 2 // borders + lines
+        } else {
+            NODE_HEIGHT
+        };
         if node.shape == NodeShape::Cylinder {
-            node.height = 5;
+            node.height = node.height.max(5);
+        }
+        if node.shape == NodeShape::Person {
+            node.height = node.height.max(5);
+            node.width = node.width.max(7);
+        }
+        if node.shape == NodeShape::Cloud {
+            node.width += 4;
+            node.height += 2;
+        }
+        if node.shape == NodeShape::Document {
+            node.height += 1;
         }
         // sql_table/class with fields: header + separator + fields + border
         if node.shape == NodeShape::Table && !node.fields.is_empty() {
@@ -115,9 +136,9 @@ fn calculate_gaps(
 
 /// Calculate display width of a table field
 fn format_field_width(field: &TableField) -> usize {
-    let mut len = field.name.chars().count();
+    let mut len = display_width(&field.name);
     if let Some(ref ti) = field.type_info {
-        len += 2 + ti.chars().count(); // ": type"
+        len += 2 + display_width(ti); // ": type"
     }
     if let Some(ref c) = field.constraint {
         len += 1 + constraint_abbrev(c).len(); // " [PK]"
@@ -143,14 +164,13 @@ fn compute_subgraph_bounds(graph: &mut Graph) {
     // Build child→parent relationships
     let sg_count = graph.subgraphs.len();
     let sg_ids: Vec<String> = graph.subgraphs.iter().map(|sg| sg.id.clone()).collect();
-    let sg_parents: Vec<Option<String>> = graph.subgraphs.iter().map(|sg| sg.parent.clone()).collect();
+    let sg_parents: Vec<Option<String>> =
+        graph.subgraphs.iter().map(|sg| sg.parent.clone()).collect();
 
     // Determine processing order: leaf subgraphs first (no children)
     let mut has_children: std::collections::HashSet<String> = std::collections::HashSet::new();
-    for parent in &sg_parents {
-        if let Some(ref p) = parent {
-            has_children.insert(p.clone());
-        }
+    for p in sg_parents.iter().flatten() {
+        has_children.insert(p.clone());
     }
 
     // Simple two-pass: first process subgraphs without children, then those with children
@@ -325,8 +345,14 @@ fn assign_layers(graph: &Graph, warnings: &mut Vec<DiagramWarning>) -> HashMap<N
 
         // Force-process the stuck node that appears earliest as an edge source
         stuck.sort_by(|a, b| {
-            let fa = first_from_idx.get(a.as_str()).copied().unwrap_or(usize::MAX);
-            let fb = first_from_idx.get(b.as_str()).copied().unwrap_or(usize::MAX);
+            let fa = first_from_idx
+                .get(a.as_str())
+                .copied()
+                .unwrap_or(usize::MAX);
+            let fb = first_from_idx
+                .get(b.as_str())
+                .copied()
+                .unwrap_or(usize::MAX);
             fa.cmp(&fb).then(a.cmp(b))
         });
 

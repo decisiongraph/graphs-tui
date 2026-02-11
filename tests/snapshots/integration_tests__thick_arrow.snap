@@ -1,0 +1,7 @@
+---
+source: tests/integration_tests.rs
+expression: r4.output
+---
+┌───┐        ┌───┐
+│ A │═══════▶│ B │
+└───┘        └───┘

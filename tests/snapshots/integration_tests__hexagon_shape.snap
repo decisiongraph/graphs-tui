@@ -1,0 +1,7 @@
+---
+source: tests/integration_tests.rs
+expression: result.output
+---
+/───────\        /───────\
+<Prepare>───────▶<Execute>
+\───────/        \───────/

@@ -1,0 +1,56 @@
+---
+source: tests/integration_tests.rs
+expression: result.output
+---
+            ┌────┐
+            │User│
+            └────┘
+               │
+               │HTTPS
+              ┌┘
+              ▼
+            ┌───┐
+            │CDN│
+            └───┘
+              │
+              │
+              │static
+              ▼
+          ┌───────┐
+          │Browser│
+          └───────┘
+              │
+              │
+              │API call
+              ▼
+        ┌───────────┐
+        │API Gateway│
+        └───────────┘
+              │
+              │route
+              └┐
+               ▼
+         ┌──────────┐
+         │App Server│
+         └──────────┘
+               │
+               │enqueue
+   ┌───read────└──────┐
+   ▼           │      ▼
+┌─────┐        ┌─────────────┐
+│Cache│        │Message Queue│
+└─────┘        └─────────────┘
+               │      │
+               │      │process
+               ┌──────┘
+               ▼
+           ┌──────┐
+           │Worker│
+           └──────┘
+               │
+               │
+               │update
+               ▼
+          ┌────────┐
+          │Database│
+          └────────┘

@@ -1,0 +1,7 @@
+---
+source: tests/integration_tests.rs
+expression: result1.output
+---
+┌─────┐        ┌───┐
+│Start│───────▶│End│
+└─────┘        └───┘

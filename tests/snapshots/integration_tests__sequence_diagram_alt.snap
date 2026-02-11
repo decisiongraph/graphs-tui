@@ -1,0 +1,17 @@
+---
+source: tests/integration_tests.rs
+expression: result.output
+---
+   ┌─────┐      ┌───┐   
+   │Alice│      │Bob│   
+   └─────┘      └───┘   
+      │           │     
+      │──────────▶│       Request
+ ┌[alt Success]───────┐
+      │           │     
+      │◀──────────│       200 OK
+ │[Failure]╌╌╌╌╌╌╌╌╌╌╌│
+      │           │     
+      │◀──────────│       500 Error
+ └────────────────────┘
+      │           │

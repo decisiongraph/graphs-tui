@@ -1,0 +1,9 @@
+---
+source: tests/issue_tests.rs
+expression: result.output
+---
+┌───┐        ┌───┐
+│ A │──[1]──▶│ B │
+└───┘        └───┘
+Labels:
+  [1] This is a very long label that will not fit

@@ -73,6 +73,7 @@ mod pie_parser;
 mod renderer;
 mod seq_parser;
 mod state_parser;
+mod text;
 mod types;
 
 pub use error::MermaidError;
@@ -195,7 +196,10 @@ pub fn render(
 pub fn check(lang: &str, code: &str) -> Result<Vec<DiagramWarning>, MermaidError> {
     match lang.to_lowercase().as_str() {
         "d2" => {
-            let D2ParseResult { mut graph, mut warnings } = parse_d2(code)?;
+            let D2ParseResult {
+                mut graph,
+                mut warnings,
+            } = parse_d2(code)?;
             warnings.extend(compute_layout(&mut graph));
             Ok(warnings)
         }
@@ -208,7 +212,10 @@ fn check_mermaid(code: &str) -> Result<Vec<DiagramWarning>, MermaidError> {
     let format = detect_format(code);
     match format {
         DiagramFormat::D2 => {
-            let D2ParseResult { mut graph, mut warnings } = parse_d2(code)?;
+            let D2ParseResult {
+                mut graph,
+                mut warnings,
+            } = parse_d2(code)?;
             warnings.extend(compute_layout(&mut graph));
             Ok(warnings)
         }
@@ -321,7 +328,10 @@ pub fn render_pie_chart(input: &str, options: RenderOptions) -> Result<RenderRes
 /// * `Ok(RenderResult)` - Rendered diagram with any warnings
 /// * `Err(MermaidError)` - Parse or layout error
 pub fn render_d2_to_tui(input: &str, options: RenderOptions) -> Result<RenderResult, MermaidError> {
-    let D2ParseResult { mut graph, mut warnings } = parse_d2(input)?;
+    let D2ParseResult {
+        mut graph,
+        mut warnings,
+    } = parse_d2(input)?;
     warnings.extend(compute_layout_with_options(&mut graph, &options));
     Ok(RenderResult {
         output: render_graph(&graph, &options, &mut warnings),

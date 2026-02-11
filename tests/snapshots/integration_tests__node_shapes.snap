@@ -1,0 +1,9 @@
+---
+source: tests/integration_tests.rs
+expression: result.output
+---
+                                                                     ╭────────╮
+┌─────────┐        ╭───────╮        (╭────╮)            /\           ├────────┤        (───────)
+│Rectangle│───────▶│Rounded│───────▶(Circle)───────▶<Diamond>───────▶│Database│───────▶(Stadium)
+└─────────┘        ╰───────╯        (╰────╯)            \/           ├────────┤        (───────)
+                                                                     ╰────────╯

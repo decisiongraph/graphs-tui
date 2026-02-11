@@ -65,6 +65,12 @@ pub enum NodeShape {
     TrapezoidAlt,
     /// Table (D2 sql_table)
     Table,
+    /// Person (D2 stick figure)
+    Person,
+    /// Cloud (D2 bumpy border)
+    Cloud,
+    /// Document/page (D2 wavy bottom)
+    Document,
 }
 
 /// Style of an edge/link
@@ -276,11 +282,7 @@ impl fmt::Display for DiagramWarning {
                 )
             }
             DiagramWarning::UnsupportedFeature { feature, line } => {
-                write!(
-                    f,
-                    "Unsupported D2 feature '{}' on line {}",
-                    feature, line
-                )
+                write!(f, "Unsupported D2 feature '{}' on line {}", feature, line)
             }
         }
     }

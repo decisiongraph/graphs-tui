@@ -2,6 +2,13 @@
 //!
 //! Pie charts are rendered as ASCII bar charts in terminal
 
+use winnow::ascii::{digit1, space0, space1};
+use winnow::combinator::{alt, delimited, opt, preceded};
+use winnow::error::{ErrMode, ParserError};
+use winnow::token::{take_until, take_while};
+use winnow::ModalResult;
+use winnow::Parser;
+
 use crate::error::MermaidError;
 use crate::types::RenderOptions;
 
@@ -21,45 +28,139 @@ pub struct PieChart {
     pub show_data: bool,
 }
 
+/// Content of a single line (after trimming)
+#[derive(Debug)]
+enum PieLine {
+    Header { show_data: bool },
+    Title(String),
+    Slice { label: String, value: f64 },
+    Comment,
+    Empty,
+}
+
+/// Parse "pie" keyword, optionally followed by "showData"
+fn parse_pie_header(input: &mut &str) -> ModalResult<bool> {
+    let _ = winnow::ascii::Caseless("pie").parse_next(input)?;
+    let _ = space0.parse_next(input)?;
+    let show_data = opt(winnow::ascii::Caseless("showdata"))
+        .parse_next(input)?
+        .is_some();
+    Ok(show_data)
+}
+
+/// Parse title line: "title <text>"
+fn parse_title_line(input: &mut &str) -> ModalResult<String> {
+    let _ = winnow::ascii::Caseless("title").parse_next(input)?;
+    let _ = space1.parse_next(input)?;
+    let title = take_while(1.., |c| c != '\n').parse_next(input)?;
+    Ok(title.trim().to_string())
+}
+
+/// Parse a quoted string: "..." or '...'
+fn parse_quoted_string(input: &mut &str) -> ModalResult<String> {
+    alt((
+        delimited('"', take_until(0.., "\""), '"'),
+        delimited('\'', take_until(0.., "'"), '\''),
+    ))
+    .map(|s: &str| s.to_string())
+    .parse_next(input)
+}
+
+/// Parse a number (integer or float)
+fn parse_number(input: &mut &str) -> ModalResult<f64> {
+    let int_part = digit1.parse_next(input)?;
+    let frac_part = opt(preceded('.', digit1)).parse_next(input)?;
+
+    let num_str = if let Some(frac) = frac_part {
+        format!("{}.{}", int_part, frac)
+    } else {
+        int_part.to_string()
+    };
+
+    num_str.parse().map_err(|_| ErrMode::from_input(input))
+}
+
+/// Parse a slice line: "Label" : value
+fn parse_slice_line(input: &mut &str) -> ModalResult<(String, f64)> {
+    let _ = space0.parse_next(input)?;
+    let label = parse_quoted_string.parse_next(input)?;
+    let _ = space0.parse_next(input)?;
+    let _ = ':'.parse_next(input)?;
+    let _ = space0.parse_next(input)?;
+    let value = parse_number.parse_next(input)?;
+    Ok((label, value))
+}
+
+/// Parse a single line and classify it
+fn parse_line(line: &str) -> PieLine {
+    let trimmed = line.trim();
+
+    // Empty line
+    if trimmed.is_empty() {
+        return PieLine::Empty;
+    }
+
+    // Comment
+    if trimmed.starts_with("%%") {
+        return PieLine::Comment;
+    }
+
+    // Try pie header
+    if let Ok(show_data) = parse_pie_header.parse(trimmed) {
+        return PieLine::Header { show_data };
+    }
+
+    // Try title
+    if let Ok(title) = parse_title_line.parse(trimmed) {
+        return PieLine::Title(title);
+    }
+
+    // Try slice
+    if let Ok((label, value)) = parse_slice_line.parse(trimmed) {
+        return PieLine::Slice { label, value };
+    }
+
+    // Unknown line - treat as empty
+    PieLine::Empty
+}
+
 /// Parse pie chart syntax
 pub fn parse_pie_chart(input: &str) -> Result<PieChart, MermaidError> {
-    let lines: Vec<&str> = input
-        .lines()
-        .map(|l| l.trim())
-        .filter(|l| !l.is_empty() && !l.starts_with("%%"))
-        .collect();
+    let lines: Vec<&str> = input.lines().collect();
 
-    if lines.is_empty() {
+    if lines.is_empty() || lines.iter().all(|l| l.trim().is_empty()) {
         return Err(MermaidError::EmptyInput);
     }
 
-    // Validate header
-    let first_line = lines[0].to_lowercase();
-    if !first_line.starts_with("pie") {
+    let mut show_data = false;
+    let mut title = None;
+    let mut slices = Vec::new();
+    let mut found_header = false;
+
+    for line in lines.iter() {
+        match parse_line(line) {
+            PieLine::Header { show_data: sd } => {
+                if !found_header {
+                    found_header = true;
+                    show_data = sd;
+                }
+            }
+            PieLine::Title(t) => {
+                title = Some(t);
+            }
+            PieLine::Slice { label, value } => {
+                slices.push(PieSlice { label, value });
+            }
+            PieLine::Comment | PieLine::Empty => {}
+        }
+    }
+
+    if !found_header {
         return Err(MermaidError::ParseError {
             line: 1,
             message: "Expected 'pie' diagram type".to_string(),
             suggestion: Some("Start with 'pie' or 'pie showData'".to_string()),
         });
-    }
-
-    let show_data = first_line.contains("showdata");
-    let mut title = None;
-    let mut slices = Vec::new();
-
-    for line in lines.iter().skip(1) {
-        // Parse title
-        if line.to_lowercase().starts_with("title") {
-            let title_text = line.strip_prefix("title").unwrap_or(line);
-            let title_text = title_text.strip_prefix("Title").unwrap_or(title_text);
-            title = Some(title_text.trim().to_string());
-            continue;
-        }
-
-        // Parse slice: "Label" : value
-        if let Some((label, value)) = parse_slice(line) {
-            slices.push(PieSlice { label, value });
-        }
     }
 
     if slices.is_empty() {
@@ -75,23 +176,6 @@ pub fn parse_pie_chart(input: &str) -> Result<PieChart, MermaidError> {
         slices,
         show_data,
     })
-}
-
-/// Parse a slice line: "Label" : value
-fn parse_slice(line: &str) -> Option<(String, f64)> {
-    // Find the colon separator
-    let colon_idx = line.find(':')?;
-
-    let label_part = line[..colon_idx].trim();
-    let value_part = line[colon_idx + 1..].trim();
-
-    // Extract label (remove quotes)
-    let label = label_part.trim_matches('"').trim_matches('\'').to_string();
-
-    // Parse value
-    let value: f64 = value_part.parse().ok()?;
-
-    Some((label, value))
 }
 
 /// Render pie chart to ASCII representation
@@ -218,5 +302,30 @@ mod tests {
         assert!(output.contains("B"));
         assert!(output.contains("60"));
         assert!(output.contains("40"));
+    }
+
+    #[test]
+    fn test_parse_quoted_string() {
+        assert_eq!(
+            parse_quoted_string.parse("\"Hello\"").unwrap(),
+            "Hello".to_string()
+        );
+        assert_eq!(
+            parse_quoted_string.parse("'World'").unwrap(),
+            "World".to_string()
+        );
+    }
+
+    #[test]
+    fn test_parse_number() {
+        assert_eq!(parse_number.parse("42").unwrap(), 42.0);
+        assert_eq!(parse_number.parse("3.14").unwrap(), 3.14);
+    }
+
+    #[test]
+    fn test_parse_slice_line() {
+        let result = parse_slice_line.parse("\"Chrome\" : 65").unwrap();
+        assert_eq!(result.0, "Chrome");
+        assert_eq!(result.1, 65.0);
     }
 }
