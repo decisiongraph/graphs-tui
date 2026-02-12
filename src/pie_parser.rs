@@ -4,9 +4,9 @@
 
 use winnow::ascii::{digit1, space0, space1};
 use winnow::combinator::{alt, delimited, opt, preceded};
-use winnow::error::{ErrMode, ParserError};
+use winnow::error::{ContextError, ErrMode};
 use winnow::token::{take_until, take_while};
-use winnow::ModalResult;
+use winnow::PResult;
 use winnow::Parser;
 
 use crate::error::MermaidError;
@@ -39,7 +39,7 @@ enum PieLine {
 }
 
 /// Parse "pie" keyword, optionally followed by "showData"
-fn parse_pie_header(input: &mut &str) -> ModalResult<bool> {
+fn parse_pie_header(input: &mut &str) -> PResult<bool> {
     let _ = winnow::ascii::Caseless("pie").parse_next(input)?;
     let _ = space0.parse_next(input)?;
     let show_data = opt(winnow::ascii::Caseless("showdata"))
@@ -49,7 +49,7 @@ fn parse_pie_header(input: &mut &str) -> ModalResult<bool> {
 }
 
 /// Parse title line: "title <text>"
-fn parse_title_line(input: &mut &str) -> ModalResult<String> {
+fn parse_title_line(input: &mut &str) -> PResult<String> {
     let _ = winnow::ascii::Caseless("title").parse_next(input)?;
     let _ = space1.parse_next(input)?;
     let title = take_while(1.., |c| c != '\n').parse_next(input)?;
@@ -57,7 +57,7 @@ fn parse_title_line(input: &mut &str) -> ModalResult<String> {
 }
 
 /// Parse a quoted string: "..." or '...'
-fn parse_quoted_string(input: &mut &str) -> ModalResult<String> {
+fn parse_quoted_string(input: &mut &str) -> PResult<String> {
     alt((
         delimited('"', take_until(0.., "\""), '"'),
         delimited('\'', take_until(0.., "'"), '\''),
@@ -67,7 +67,7 @@ fn parse_quoted_string(input: &mut &str) -> ModalResult<String> {
 }
 
 /// Parse a number (integer or float)
-fn parse_number(input: &mut &str) -> ModalResult<f64> {
+fn parse_number(input: &mut &str) -> PResult<f64> {
     let int_part = digit1.parse_next(input)?;
     let frac_part = opt(preceded('.', digit1)).parse_next(input)?;
 
@@ -77,11 +77,11 @@ fn parse_number(input: &mut &str) -> ModalResult<f64> {
         int_part.to_string()
     };
 
-    num_str.parse().map_err(|_| ErrMode::from_input(input))
+    num_str.parse().map_err(|_| ErrMode::Backtrack(ContextError::new()))
 }
 
 /// Parse a slice line: "Label" : value
-fn parse_slice_line(input: &mut &str) -> ModalResult<(String, f64)> {
+fn parse_slice_line(input: &mut &str) -> PResult<(String, f64)> {
     let _ = space0.parse_next(input)?;
     let label = parse_quoted_string.parse_next(input)?;
     let _ = space0.parse_next(input)?;

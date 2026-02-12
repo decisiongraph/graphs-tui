@@ -1,8 +1,8 @@
 use winnow::ascii::{space0, space1, Caseless};
 use winnow::combinator::{alt, delimited};
-use winnow::error::{ErrMode, ParserError};
+use winnow::error::{ContextError, ErrMode};
 use winnow::token::{rest, take_until, take_while};
-use winnow::ModalResult;
+use winnow::PResult;
 use winnow::Parser;
 
 use crate::error::MermaidError;
@@ -32,7 +32,7 @@ enum MermaidLine {
 // ===== Winnow parsers =====
 
 /// Parse flowchart/graph keyword + direction
-fn w_header(input: &mut &str) -> ModalResult<Direction> {
+fn w_header(input: &mut &str) -> PResult<Direction> {
     let _ = alt((Caseless("flowchart"), Caseless("graph"))).parse_next(input)?;
     let _ = space1.parse_next(input)?;
     alt((
@@ -46,7 +46,7 @@ fn w_header(input: &mut &str) -> ModalResult<Direction> {
 }
 
 /// Parse classDef: classDef name props...
-fn w_classdef(input: &mut &str) -> ModalResult<(String, NodeStyle)> {
+fn w_classdef(input: &mut &str) -> PResult<(String, NodeStyle)> {
     let _ = Caseless("classdef").parse_next(input)?;
     let _ = space1.parse_next(input)?;
     let name: &str = take_while(1.., |c: char| !c.is_whitespace()).parse_next(input)?;
@@ -57,13 +57,13 @@ fn w_classdef(input: &mut &str) -> ModalResult<(String, NodeStyle)> {
 }
 
 /// Parse class assignment: class A,B,C className
-fn w_class_assignment(input: &mut &str) -> ModalResult<(Vec<String>, String)> {
+fn w_class_assignment(input: &mut &str) -> PResult<(Vec<String>, String)> {
     let _ = Caseless("class").parse_next(input)?;
     let _ = space1.parse_next(input)?;
     let rest_str: &str = rest.parse_next(input)?;
     let parts: Vec<&str> = rest_str.rsplitn(2, char::is_whitespace).collect();
     if parts.len() != 2 {
-        return Err(ErrMode::from_input(input));
+        return Err(ErrMode::Backtrack(ContextError::new()));
     }
     let class_name = parts[0].trim().to_string();
     let node_ids = parts[1].split(',').map(|s| s.trim().to_string()).collect();
@@ -71,7 +71,7 @@ fn w_class_assignment(input: &mut &str) -> ModalResult<(Vec<String>, String)> {
 }
 
 /// Parse subgraph header: subgraph ID [Label] or subgraph ID
-fn w_subgraph(input: &mut &str) -> ModalResult<(String, String)> {
+fn w_subgraph(input: &mut &str) -> PResult<(String, String)> {
     let _ = Caseless("subgraph").parse_next(input)?;
     let _ = space1.parse_next(input)?;
     let rest_str: &str = rest.parse_next(input)?;
@@ -94,11 +94,11 @@ fn w_subgraph(input: &mut &str) -> ModalResult<(String, String)> {
     if !id.is_empty() && is_valid_id(id) {
         return Ok((id.to_string(), id.to_string()));
     }
-    Err(ErrMode::from_input(input))
+    Err(ErrMode::Backtrack(ContextError::new()))
 }
 
 /// Parse edge label: |label|
-fn w_edge_label(input: &mut &str) -> ModalResult<String> {
+fn w_edge_label(input: &mut &str) -> PResult<String> {
     delimited('|', take_until(0.., "|"), '|')
         .map(|s: &str| s.to_string())
         .parse_next(input)

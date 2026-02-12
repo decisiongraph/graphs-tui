@@ -7,7 +7,7 @@ use std::collections::HashSet;
 use winnow::ascii::{space0, space1};
 use winnow::combinator::{alt, opt, preceded};
 use winnow::token::{rest, take_while};
-use winnow::ModalResult;
+use winnow::PResult;
 use winnow::Parser;
 
 use crate::error::MermaidError;
@@ -137,13 +137,13 @@ enum SeqLine {
 }
 
 /// Parse sequenceDiagram header
-fn parse_header(input: &mut &str) -> ModalResult<()> {
+fn parse_header(input: &mut &str) -> PResult<()> {
     let _ = winnow::ascii::Caseless("sequencediagram").parse_next(input)?;
     Ok(())
 }
 
 /// Parse title declaration
-fn parse_title(input: &mut &str) -> ModalResult<String> {
+fn parse_title(input: &mut &str) -> PResult<String> {
     let _ = winnow::ascii::Caseless("title").parse_next(input)?;
     let _ = space1.parse_next(input)?;
     let title = rest.parse_next(input)?;
@@ -151,20 +151,20 @@ fn parse_title(input: &mut &str) -> ModalResult<String> {
 }
 
 /// Parse autonumber directive
-fn parse_autonumber(input: &mut &str) -> ModalResult<()> {
+fn parse_autonumber(input: &mut &str) -> PResult<()> {
     let _ = winnow::ascii::Caseless("autonumber").parse_next(input)?;
     Ok(())
 }
 
 /// Parse participant/actor ID (alphanumeric and underscore only - no dash as it conflicts with arrows)
-fn parse_participant_id(input: &mut &str) -> ModalResult<String> {
+fn parse_participant_id(input: &mut &str) -> PResult<String> {
     take_while(1.., |c: char| c.is_alphanumeric() || c == '_')
         .map(|s: &str| s.to_string())
         .parse_next(input)
 }
 
 /// Parse target participant ID with optional +/- activation prefix
-fn parse_target_participant_id(input: &mut &str) -> ModalResult<(String, bool, bool)> {
+fn parse_target_participant_id(input: &mut &str) -> PResult<(String, bool, bool)> {
     let prefix = opt(alt(('+', '-'))).parse_next(input)?;
     let id = parse_participant_id(input)?;
     let activate = prefix == Some('+');
@@ -173,7 +173,7 @@ fn parse_target_participant_id(input: &mut &str) -> ModalResult<(String, bool, b
 }
 
 /// Parse participant declaration: participant A as Alice or participant Alice
-fn parse_participant_decl(input: &mut &str) -> ModalResult<(String, String)> {
+fn parse_participant_decl(input: &mut &str) -> PResult<(String, String)> {
     let _ = winnow::ascii::Caseless("participant").parse_next(input)?;
     let _ = space1.parse_next(input)?;
     let first_part = parse_participant_id.parse_next(input)?;
@@ -195,7 +195,7 @@ fn parse_participant_decl(input: &mut &str) -> ModalResult<(String, String)> {
 }
 
 /// Parse actor declaration: actor A as Alice or actor Alice
-fn parse_actor_decl(input: &mut &str) -> ModalResult<(String, String)> {
+fn parse_actor_decl(input: &mut &str) -> PResult<(String, String)> {
     let _ = winnow::ascii::Caseless("actor").parse_next(input)?;
     let _ = space1.parse_next(input)?;
     let first_part = parse_participant_id.parse_next(input)?;
@@ -217,7 +217,7 @@ fn parse_actor_decl(input: &mut &str) -> ModalResult<(String, String)> {
 }
 
 /// Parse message arrow and extract style
-fn parse_arrow(input: &mut &str) -> ModalResult<ArrowStyle> {
+fn parse_arrow(input: &mut &str) -> PResult<ArrowStyle> {
     alt((
         "-->>".map(|_| ArrowStyle::Dotted),
         "->>".map(|_| ArrowStyle::Solid),
@@ -229,7 +229,7 @@ fn parse_arrow(input: &mut &str) -> ModalResult<ArrowStyle> {
 }
 
 /// Parse message: From->>To: Label (with optional +/- on target for inline activation)
-fn parse_message_line(input: &mut &str) -> ModalResult<Message> {
+fn parse_message_line(input: &mut &str) -> PResult<Message> {
     let from = parse_participant_id.parse_next(input)?;
     let style = parse_arrow.parse_next(input)?;
     let (to, activate_to, deactivate_to) = parse_target_participant_id(input)?;

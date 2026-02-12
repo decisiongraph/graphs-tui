@@ -15,9 +15,9 @@
 
 use winnow::ascii::{space0, Caseless};
 use winnow::combinator::alt;
-use winnow::error::{ErrMode, ParserError};
+use winnow::error::{ContextError, ErrMode};
 use winnow::token::{rest, take_until};
-use winnow::ModalResult;
+use winnow::PResult;
 use winnow::Parser;
 
 use crate::error::MermaidError;
@@ -29,7 +29,7 @@ use crate::types::{
 // ===== Winnow parsers =====
 
 /// Parse direction declaration: "direction: right|left|down|up"
-fn w_direction(input: &mut &str) -> ModalResult<Direction> {
+fn w_direction(input: &mut &str) -> PResult<Direction> {
     let _ = "direction:".parse_next(input)?;
     let _ = space0.parse_next(input)?;
     alt((
@@ -42,7 +42,7 @@ fn w_direction(input: &mut &str) -> ModalResult<Direction> {
 }
 
 /// Parse shape property: "id.shape: type"
-fn w_shape_property(input: &mut &str) -> ModalResult<(String, NodeShape)> {
+fn w_shape_property(input: &mut &str) -> PResult<(String, NodeShape)> {
     let id: &str = take_until(1.., ".shape:").parse_next(input)?;
     let _ = ".shape:".parse_next(input)?;
     let _ = space0.parse_next(input)?;
@@ -52,7 +52,7 @@ fn w_shape_property(input: &mut &str) -> ModalResult<(String, NodeShape)> {
 }
 
 /// Parse label property: "id.label: text"
-fn w_label_property(input: &mut &str) -> ModalResult<(String, String)> {
+fn w_label_property(input: &mut &str) -> PResult<(String, String)> {
     let id: &str = take_until(1.., ".label:").parse_next(input)?;
     let _ = ".label:".parse_next(input)?;
     let _ = space0.parse_next(input)?;
@@ -66,7 +66,7 @@ fn w_label_property(input: &mut &str) -> ModalResult<(String, String)> {
 }
 
 /// Parse standalone shape inside container: "shape: type"
-fn w_standalone_shape(input: &mut &str) -> ModalResult<NodeShape> {
+fn w_standalone_shape(input: &mut &str) -> PResult<NodeShape> {
     let _ = "shape:".parse_next(input)?;
     let _ = space0.parse_next(input)?;
     let shape_str: &str = rest.parse_next(input)?;
@@ -74,11 +74,11 @@ fn w_standalone_shape(input: &mut &str) -> ModalResult<NodeShape> {
 }
 
 /// Parse table field with optional type and constraint
-fn w_table_field(input: &mut &str) -> ModalResult<TableField> {
+fn w_table_field(input: &mut &str) -> PResult<TableField> {
     let line: &str = rest.parse_next(input)?;
     let line = line.trim();
     if line.is_empty() || line.starts_with('#') {
-        return Err(ErrMode::from_input(input));
+        return Err(ErrMode::Backtrack(ContextError::new()));
     }
 
     let (main_part, constraint) = if let Some(brace_start) = line.find('{') {

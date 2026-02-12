@@ -5,7 +5,7 @@
 use winnow::ascii::{space0, space1};
 use winnow::combinator::{alt, delimited, opt, preceded};
 use winnow::token::{rest, take_until, take_while};
-use winnow::ModalResult;
+use winnow::PResult;
 use winnow::Parser;
 
 use crate::error::MermaidError;
@@ -35,46 +35,46 @@ enum StateLine {
 }
 
 /// Parse stateDiagram or stateDiagram-v2 header
-fn parse_header(input: &mut &str) -> ModalResult<()> {
+fn parse_header(input: &mut &str) -> PResult<()> {
     let _ = winnow::ascii::Caseless("statediagram").parse_next(input)?;
     let _ = opt(("-v2", opt(space0))).parse_next(input)?;
     Ok(())
 }
 
 /// Parse direction declaration
-fn parse_direction(input: &mut &str) -> ModalResult<()> {
+fn parse_direction(input: &mut &str) -> PResult<()> {
     let _ = winnow::ascii::Caseless("direction").parse_next(input)?;
     Ok(())
 }
 
 /// Parse a quoted string: "..."
-fn parse_quoted_string(input: &mut &str) -> ModalResult<String> {
+fn parse_quoted_string(input: &mut &str) -> PResult<String> {
     delimited('"', take_until(0.., "\""), '"')
         .map(|s: &str| s.to_string())
         .parse_next(input)
 }
 
 /// Parse state ID (alphanumeric + underscore)
-fn parse_state_id(input: &mut &str) -> ModalResult<String> {
+fn parse_state_id(input: &mut &str) -> PResult<String> {
     take_while(1.., |c: char| c.is_alphanumeric() || c == '_')
         .map(|s: &str| s.to_string())
         .parse_next(input)
 }
 
 /// Parse [*] special state marker
-fn parse_special_state(input: &mut &str) -> ModalResult<String> {
+fn parse_special_state(input: &mut &str) -> PResult<String> {
     delimited('[', '*', ']')
         .map(|_| "[*]".to_string())
         .parse_next(input)
 }
 
 /// Parse a state reference (either [*] or regular ID)
-fn parse_state_ref(input: &mut &str) -> ModalResult<String> {
+fn parse_state_ref(input: &mut &str) -> PResult<String> {
     alt((parse_special_state, parse_state_id)).parse_next(input)
 }
 
 /// Parse state declaration: state "Description" as ID
-fn parse_state_with_description(input: &mut &str) -> ModalResult<(String, String)> {
+fn parse_state_with_description(input: &mut &str) -> PResult<(String, String)> {
     let _ = winnow::ascii::Caseless("state").parse_next(input)?;
     let _ = space1.parse_next(input)?;
     let description = parse_quoted_string.parse_next(input)?;
@@ -86,7 +86,7 @@ fn parse_state_with_description(input: &mut &str) -> ModalResult<(String, String
 }
 
 /// Parse composite state start: state Name {
-fn parse_composite_start(input: &mut &str) -> ModalResult<String> {
+fn parse_composite_start(input: &mut &str) -> PResult<String> {
     let _ = winnow::ascii::Caseless("state").parse_next(input)?;
     let _ = space1.parse_next(input)?;
     let name = take_while(1.., |c: char| c.is_alphanumeric() || c == '_').parse_next(input)?;
@@ -96,7 +96,7 @@ fn parse_composite_start(input: &mut &str) -> ModalResult<String> {
 }
 
 /// Parse simple state declaration: state ID
-fn parse_simple_state_decl(input: &mut &str) -> ModalResult<String> {
+fn parse_simple_state_decl(input: &mut &str) -> PResult<String> {
     let _ = winnow::ascii::Caseless("state").parse_next(input)?;
     let _ = space1.parse_next(input)?;
     let id = parse_state_id.parse_next(input)?;
@@ -104,7 +104,7 @@ fn parse_simple_state_decl(input: &mut &str) -> ModalResult<String> {
 }
 
 /// Parse transition: State1 --> State2 or State1 --> State2: label
-fn parse_transition(input: &mut &str) -> ModalResult<(String, String, Option<String>)> {
+fn parse_transition(input: &mut &str) -> PResult<(String, String, Option<String>)> {
     let from = parse_state_ref.parse_next(input)?;
     let _ = space0.parse_next(input)?;
     let _ = "-->".parse_next(input)?;
