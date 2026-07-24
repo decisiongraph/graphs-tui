@@ -216,6 +216,37 @@ println!("{}", result.output);
 +-----+        +---+
 ```
 
+## Usage as a CLI utility
+
+    $ cargo install <path to repo>
+    $ echo "A -> B -> C" | graphs-tui
+    ┌───┐
+    │ A │
+    └───┘
+      │
+      │
+      │
+      ▼
+    ┌───┐
+    │ B │
+    └───┘
+      │
+      │
+      │
+      ▼
+    ┌───┐
+    │ C │
+    └───┘
+
+    $ echo "flowchart LR
+        A[Start] --> B[Process]
+        B --> C{Decision}
+        C -->|Yes| D[Done]
+        C -->|No| B" | graphs-tui
+    ┌─────┐        ┌───────┐             /\           ┌────┐
+    │Start│───────▶│Process│───No───<Decision>──Yes──▶│Done│
+    └─────┘        └───────┘             \/           └────┘
+
 ## Supported Syntax
 
 ### Mermaid Flowcharts
@@ -275,3 +306,4 @@ AGPL-3.0-or-later
 ## Inspiration
 
 Inspired by [tariqshams/mermaidtui](https://github.com/tariqshams/mermaidtui)
+
