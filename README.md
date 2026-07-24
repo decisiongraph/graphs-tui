@@ -32,8 +32,8 @@ let input = r#"flowchart LR
     C -->|Yes| D[Done]
     C -->|No| B"#;
 
-let output = render_mermaid_to_tui(input, RenderOptions::default()).unwrap();
-println!("{}", output);
+let result = render_mermaid_to_tui(input, RenderOptions::default()).unwrap();
+println!("{}", result.output);
 ```
 
 **Output:**
@@ -60,8 +60,8 @@ let input = r#"stateDiagram-v2
     Running --> Idle: stop
     Running --> [*]: complete"#;
 
-let output = render_state_diagram(input, RenderOptions::default()).unwrap();
-println!("{}", output);
+let result = render_state_diagram(input, RenderOptions::default()).unwrap();
+println!("{}", result.output);
 ```
 
 **Output:**
@@ -96,8 +96,8 @@ let input = r#"pie
     "Pending" : 15
     "Blocked" : 10"#;
 
-let output = render_pie_chart(input, RenderOptions::default()).unwrap();
-println!("{}", output);
+let result = render_pie_chart(input, RenderOptions::default()).unwrap();
+println!("{}", result.output);
 ```
 
 **Output:**
@@ -129,8 +129,8 @@ db -> server: Result
 server -> user: Response
 "#;
 
-let output = render_d2_to_tui(input, RenderOptions::default()).unwrap();
-println!("{}", output);
+let result = render_d2_to_tui(input, RenderOptions::default()).unwrap();
+println!("{}", result.output);
 ```
 
 **Output:**
@@ -175,8 +175,8 @@ api -> db
 api -> cache
 "#;
 
-let output = render_d2_to_tui(input, RenderOptions::default()).unwrap();
-println!("{}", output);
+let result = render_d2_to_tui(input, RenderOptions::default()).unwrap();
+println!("{}", result.output);
 ```
 
 ### Auto-Detection
@@ -205,8 +205,8 @@ use graphs_tui::{render_mermaid_to_tui, RenderOptions};
 
 let input = "flowchart LR\n    A[Start] --> B[End]";
 let options = RenderOptions { ascii: true, max_width: None };
-let output = render_mermaid_to_tui(input, options).unwrap();
-println!("{}", output);
+let result = render_mermaid_to_tui(input, options).unwrap();
+println!("{}", result.output);
 ```
 
 **Output:**
