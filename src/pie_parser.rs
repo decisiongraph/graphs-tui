@@ -319,7 +319,7 @@ mod tests {
     #[test]
     fn test_parse_number() {
         assert_eq!(parse_number.parse("42").unwrap(), 42.0);
-        assert_eq!(parse_number.parse("3.14").unwrap(), 3.14);
+        assert_eq!(parse_number.parse("12.34").unwrap(), 12.34);
     }
 
     #[test]

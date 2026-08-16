@@ -1467,9 +1467,9 @@ mod tests {
     Bob->>-Alice: Bye
 "#;
         let diagram = parse_sequence_diagram(input).unwrap();
-        assert_eq!(diagram.messages[0].activate_to, true);
+        assert!(diagram.messages[0].activate_to);
         assert_eq!(diagram.messages[0].to, "Bob");
-        assert_eq!(diagram.messages[1].deactivate_to, true);
+        assert!(diagram.messages[1].deactivate_to);
         assert_eq!(diagram.activations.len(), 1);
     }
 
