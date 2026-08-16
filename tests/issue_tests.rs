@@ -535,3 +535,34 @@ api -> users: 503 errors
     );
     insta::assert_snapshot!(result.output);
 }
+
+/// decisiongraph/dg#18: valid mermaid rejected by the validator.
+/// These all render fine on mermaid.live / GitHub and must pass check().
+#[test]
+fn test_dg_issue_18_valid_mermaid_passes_check() {
+    let input = r#"flowchart LR
+  A["bootstrap/ (org folder, state bucket)"] --> B
+  C -. retry later .-> D
+  E <--> F"#;
+    let warnings = check("mermaid", input).expect("valid mermaid must parse");
+    // Bidirectional edge is a single edge — no cycle warning
+    assert!(
+        !warnings
+            .iter()
+            .any(|w| matches!(w, DiagramWarning::CycleDetected { .. })),
+        "no cycle expected: {warnings:?}"
+    );
+}
+
+/// decisiongraph/dg#18: explicit mermaid must not fall through to the D2
+/// parser and produce a confusing "No valid D2 content found" error.
+#[test]
+fn test_dg_issue_18_mermaid_never_reports_d2_errors() {
+    // No flowchart header and no mermaid arrow indicators
+    let err = check("mermaid", "A --- B").unwrap_err();
+    let msg = err.to_string();
+    assert!(
+        !msg.contains("D2"),
+        "mermaid input must get a mermaid error, got: {msg}"
+    );
+}

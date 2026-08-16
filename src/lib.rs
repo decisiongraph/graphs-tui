@@ -203,14 +203,24 @@ pub fn check(lang: &str, code: &str) -> Result<Vec<DiagramWarning>, MermaidError
             warnings.extend(compute_layout(&mut graph));
             Ok(warnings)
         }
-        _ => check_mermaid(code),
+        // Explicitly-declared mermaid must never fall through to the D2
+        // parser — its "No valid D2 content found" errors are misleading for
+        // mermaid input.
+        "mermaid" => check_mermaid(code, true),
+        _ => check_mermaid(code, false),
     }
 }
 
 /// Validate mermaid input (auto-detect subformat) without rendering.
-fn check_mermaid(code: &str) -> Result<Vec<DiagramWarning>, MermaidError> {
+/// With `strict`, ambiguous input is parsed as a mermaid flowchart instead of
+/// falling back to D2.
+fn check_mermaid(code: &str, strict: bool) -> Result<Vec<DiagramWarning>, MermaidError> {
     let format = detect_format(code);
     match format {
+        DiagramFormat::D2 if strict => {
+            let mut graph = parse_mermaid(code)?;
+            Ok(compute_layout(&mut graph))
+        }
         DiagramFormat::D2 => {
             let D2ParseResult {
                 mut graph,

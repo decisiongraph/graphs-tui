@@ -206,7 +206,21 @@ struct EdgePattern {
 }
 
 const EDGE_PATTERNS: &[EdgePattern] = &[
-    // Order matters - check longer/more specific patterns first
+    // Order matters - check longer/more specific patterns first.
+    // Bidirectional arrows become a single edge (same as D2's `<->`), so a
+    // request/response pair does not register as a cycle.
+    EdgePattern {
+        pattern: "<-.->",
+        style: EdgeStyle::DottedArrow,
+    },
+    EdgePattern {
+        pattern: "<-->",
+        style: EdgeStyle::Arrow,
+    },
+    EdgePattern {
+        pattern: "<==>",
+        style: EdgeStyle::ThickArrow,
+    },
     EdgePattern {
         pattern: "-.->",
         style: EdgeStyle::DottedArrow,
@@ -245,6 +259,55 @@ fn find_edge_pattern(line: &str) -> Option<(&'static str, EdgeStyle)> {
 
 // ===== Content line parsing =====
 
+/// Rewrite inline edge labels (`A -- text --> B`, `A -. text .-> B`,
+/// `A == text ==> B`) into the pipe form (`A -->|text| B`) the segment
+/// splitter understands. Tokens are whitespace-delimited, which matches how
+/// these forms are written in practice.
+fn rewrite_inline_edge_labels(line: &str) -> String {
+    fn close_arrow(open: &str, close: &str) -> Option<&'static str> {
+        match (open, close) {
+            ("--", "-->") => Some("-->"),
+            ("--", "---") | ("--", "--") => Some("---"),
+            ("-.", ".->") => Some("-.->"),
+            ("-.", ".-") => Some("-.-"),
+            ("==", "==>") => Some("==>"),
+            ("==", "===") | ("==", "==") => Some("==="),
+            _ => None,
+        }
+    }
+
+    fn depth_delta(tok: &str) -> i32 {
+        tok.chars().fold(0, |d, c| match c {
+            '[' | '(' | '{' => d + 1,
+            ']' | ')' | '}' => d - 1,
+            _ => d,
+        })
+    }
+
+    let tokens: Vec<&str> = line.split_whitespace().collect();
+    let mut out: Vec<String> = Vec::new();
+    let mut depth = 0i32;
+    let mut i = 0;
+    while i < tokens.len() {
+        let tok = tokens[i];
+        // Only rewrite outside node brackets, so `A[a -- b] --> C` keeps its label
+        if depth == 0 && matches!(tok, "--" | "-." | "==") {
+            let close =
+                (i + 2..tokens.len()).find_map(|j| close_arrow(tok, tokens[j]).map(|a| (j, a)));
+            if let Some((j, arrow)) = close {
+                let label = tokens[i + 1..j].join(" ");
+                out.push(format!("{arrow}|{label}|"));
+                i = j + 1;
+                continue;
+            }
+        }
+        depth += depth_delta(tok);
+        out.push(tok.to_string());
+        i += 1;
+    }
+    out.join(" ")
+}
+
 /// Parse a content line (node declaration or edge)
 fn parse_content_line(
     graph: &mut Graph,
@@ -252,6 +315,16 @@ fn parse_content_line(
     line_num: usize,
     current_subgraph: Option<&str>,
 ) -> Result<(), MermaidError> {
+    // Inline-label edges can't be handled by the plain split below —
+    // normalize them to the pipe form first.
+    let rewritten;
+    let line = if line.contains(" -- ") || line.contains(" -. ") || line.contains(" == ") {
+        rewritten = rewrite_inline_edge_labels(line);
+        rewritten.as_str()
+    } else {
+        line
+    };
+
     if let Some((pattern, style)) = find_edge_pattern(line) {
         let segments: Vec<&str> = line.split(pattern).map(|s| s.trim()).collect();
 
@@ -417,9 +490,23 @@ fn parse_node_segment(
         ("[", "]", NodeShape::Rectangle),
     ];
 
-    for &(open, close, shape) in shape_attempts {
-        if let Some(result) = try_parse_shape(segment, open, close, shape) {
-            return validate_node_result(result, segment, line_num, style_class);
+    // Only consider delimiters at the EARLIEST open position in the segment:
+    // for `A["x (y)"]` the `[` at index 1 must win over the `(` inside the
+    // quoted label. Candidates at that position are tried in table order
+    // (longest first), so `[/…/]` still falls through Trapezoid to
+    // Parallelogram when the close delimiter differs.
+    let min_pos = shape_attempts
+        .iter()
+        .filter_map(|&(open, _, _)| segment.find(open))
+        .min();
+    if let Some(min_pos) = min_pos {
+        for &(open, close, shape) in shape_attempts {
+            if segment.find(open) != Some(min_pos) {
+                continue;
+            }
+            if let Some(result) = try_parse_shape(segment, open, close, shape) {
+                return validate_node_result(result, segment, line_num, style_class);
+            }
         }
     }
 
@@ -469,20 +556,28 @@ fn validate_node_result(
         return Err(MermaidError::ParseError {
             line: line_num,
             message: format!("Invalid node ID in: \"{}\"", segment),
-            suggestion: Some("Node ID must be alphanumeric".to_string()),
+            suggestion: Some("Node ID must be alphanumeric (plus `_`, `-`, `.`)".to_string()),
         });
     }
     Ok((id, Some(label), shape, style_class))
 }
 
-/// Normalize label text (handle <br/> tags as line breaks)
+/// Normalize label text (strip surrounding quotes, handle <br/> tags as line breaks)
 fn normalize_label(label: &str) -> String {
+    let label = label.trim();
+    let label = if label.len() >= 2 && label.starts_with('"') && label.ends_with('"') {
+        &label[1..label.len() - 1]
+    } else {
+        label
+    };
     label.replace("<br/>", "\n").replace("<br>", "\n")
 }
 
-/// Check if string is a valid node ID (alphanumeric + underscore)
+/// Check if string is a valid node ID (alphanumeric + `_`, `-`, `.`)
 fn is_valid_id(s: &str) -> bool {
-    !s.is_empty() && s.chars().all(|c| c.is_alphanumeric() || c == '_')
+    !s.is_empty()
+        && s.chars()
+            .all(|c| c.is_alphanumeric() || matches!(c, '_' | '-' | '.'))
 }
 
 // ===== Color parsing =====
@@ -822,6 +917,66 @@ mod tests {
         let graph = parse_mermaid(input).unwrap();
         assert_eq!(graph.nodes.len(), 4);
         assert_eq!(graph.edges.len(), 4);
+    }
+
+    // ===== FALSE-POSITIVE REGRESSIONS (decisiongraph/dg#18) =====
+
+    #[test]
+    fn test_quoted_label_with_parens() {
+        let input = "flowchart LR\nA[\"bootstrap/ (org folder, state bucket)\"] --> B";
+        let graph = parse_mermaid(input).unwrap();
+        assert_eq!(
+            graph.nodes.get("A").unwrap().label,
+            "bootstrap/ (org folder, state bucket)"
+        );
+        assert_eq!(graph.edges.len(), 1);
+    }
+
+    #[test]
+    fn test_dotted_edge_inline_label() {
+        let input = "flowchart LR\nC -. retry later .-> D";
+        let graph = parse_mermaid(input).unwrap();
+        assert_eq!(graph.edges[0].label, Some("retry later".to_string()));
+        assert_eq!(graph.edges[0].style, EdgeStyle::DottedArrow);
+    }
+
+    #[test]
+    fn test_solid_and_thick_inline_labels() {
+        let graph = parse_mermaid("flowchart LR\nA -- yes --> B").unwrap();
+        assert_eq!(graph.edges[0].label, Some("yes".to_string()));
+        assert_eq!(graph.edges[0].style, EdgeStyle::Arrow);
+
+        let graph = parse_mermaid("flowchart LR\nA == go ==> B").unwrap();
+        assert_eq!(graph.edges[0].label, Some("go".to_string()));
+        assert_eq!(graph.edges[0].style, EdgeStyle::ThickArrow);
+    }
+
+    #[test]
+    fn test_bidirectional_arrows() {
+        // One edge, not two — same as D2's `<->` — so no spurious cycle
+        let graph = parse_mermaid("flowchart LR\nE <--> F").unwrap();
+        assert_eq!(graph.edges.len(), 1);
+        assert_eq!(graph.edges[0].style, EdgeStyle::Arrow);
+
+        let graph = parse_mermaid("flowchart LR\nE <-.-> F").unwrap();
+        assert_eq!(graph.edges[0].style, EdgeStyle::DottedArrow);
+
+        let graph = parse_mermaid("flowchart LR\nE <==> F").unwrap();
+        assert_eq!(graph.edges[0].style, EdgeStyle::ThickArrow);
+    }
+
+    #[test]
+    fn test_hyphen_and_dot_node_ids() {
+        let graph = parse_mermaid("flowchart LR\nmy-node --> other.node").unwrap();
+        assert!(graph.nodes.contains_key("my-node"));
+        assert!(graph.nodes.contains_key("other.node"));
+    }
+
+    #[test]
+    fn test_label_with_dashes_inside_brackets_unchanged() {
+        let graph = parse_mermaid("flowchart LR\nA[a -- b] --> C").unwrap();
+        assert_eq!(graph.nodes.get("A").unwrap().label, "a -- b");
+        assert_eq!(graph.edges.len(), 1);
     }
 
     // ===== STYLE CLASS TESTS =====
